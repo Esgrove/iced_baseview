@@ -6,39 +6,118 @@ authors = [
   "Robbert van der Helm <mail@robbertvanderhelm.nl>",
   "Joakim Frostegård <joakim.frostegard@gmail.com>",
 ]
-edition = "2021"
-description = "A baseview runtime for Iced"
-license = "MIT"
-repository = "https://github.com/BillyDM/iced_baseview"
-documentation = "https://docs.rs/iced_baseview"
+description = "A baseview backend for Iced"
 keywords = ["gui", "ui", "graphics", "interface", "widgets"]
 categories = ["gui"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/BillyDM/iced_baseview"
+readme = "README.md"
 
 [features]
-default = ["wgpu"]
-# Enables a debug view in native platforms (press F12)
-debug = ["iced_runtime/debug"]
-# Enable the wgu renderer
-wgpu = ["iced_renderer/wgpu", "iced_widget/wgpu"]
-image = ["iced_graphics/image", "iced_widget/image", "iced_renderer/image"]
-svg = ["iced_graphics/svg", "iced_widget/svg", "iced_renderer/svg"]
-geometry = ["iced_graphics/geometry", "iced_renderer/geometry"]
-web-colors = ["iced_graphics/web-colors", "iced_renderer/web-colors"]
+default = [
+  "tracing",
+  "wgpu",
+  "tiny-skia",
+  "crisp",
+  "web-colors",
+  "thread-pool",
+  "x11",
+]
+# Enables logging using NIH-plug's logging feature
+nih_log = ["dep:nih_plug"]
+# Enable this if `nih_log` is disabled
+tracing = ["dep:tracing"]
+# Enables the `wgpu` GPU-accelerated renderer with all its default features (Vulkan, Metal, DX12, OpenGL, and WebGPU)
+wgpu = ["wgpu-bare", "iced_renderer/wgpu"]
+# Enables the `wgpu` GPU-accelerated renderer with the minimum required features (no backends!)
+wgpu-bare = ["iced_renderer/wgpu-bare"]
+# Enables the `tiny-skia` software renderer
+tiny-skia = ["iced_renderer/tiny-skia"]
+# Enables the `image` widget
+image = ["image-without-codecs", "image/default"]
+# Enables the `image` widget, without any built-in codecs of the `image` crate
+image-without-codecs = ["iced_widget/image", "dep:image"]
+# Enables the `svg` widget
+svg = ["iced_widget/svg"]
+# Enables the `canvas` widget
 canvas = ["iced_widget/canvas"]
-system = ["dep:sysinfo"]
-trace = []
+# Enables the `qr_code` widget
+qr_code = ["iced_widget/qr_code"]
+# Enables the `markdown` widget
+markdown = ["iced_widget/markdown"]
+# Enables lazy widgets
+lazy = ["iced_widget/lazy"]
+# Enables debug metrics in native platforms (press F12)
+debug = ["dep:iced_devtools", "iced_debug/enable"]
+# Enables time-travel debugging (very experimental!)
+time-travel = ["debug", "iced_devtools/time-travel"]
+# Enables hot reloading (very experimental!)
+hot = ["debug", "iced_debug/hot"]
+# Enables the `thread-pool` futures executor as the `executor::Default` on native platforms
+thread-pool = ["iced_futures/thread-pool"]
+# Enables `tokio` as the `executor::Default` on native platforms
+tokio = ["iced_futures/tokio"]
+# Enables `smol` as the `executor::Default` on native platforms
+smol = ["iced_futures/smol"]
+# Enables querying system information
+sysinfo = ["dep:sysinfo"]
+# Enables broken "sRGB linear" blending to reproduce color management of the Web
+web-colors = ["iced_renderer/web-colors"]
+# Enables pixel snapping for crisp edges by default (can cause jitter!)
+crisp = ["iced_core/crisp", "iced_widget/crisp"]
+# Enables syntax highlighting
+highlighter = ["dep:iced_highlighter", "iced_widget/highlighter"]
+# Enables the `widget::selector` module
+selector = ["iced_runtime/selector"]
+# Enables the advanced module
+advanced = ["iced_core/advanced", "iced_widget/advanced"]
+# Embeds Fira Sans into the final application; useful for testing and Wasm builds
+fira-sans = ["iced_renderer/fira-sans"]
+# Enables basic text shaping by default
+basic-shaping = ["iced_core/basic-shaping"]
+# Enables advanced text shaping by default
+advanced-shaping = ["iced_core/advanced-shaping"]
+# Enables strict assertions for debugging purposes at the expense of performance
+strict-assertions = ["iced_renderer/strict-assertions"]
+# Redraws on every runtime event, and not only when a widget requests it
+unconditional-rendering = []
+# Enables support for the `sipper` library
+sipper = ["iced_runtime/sipper"]
+# Enables the Unix X11 backend
+x11 = ["iced_renderer/x11", "window_clipboard/x11"]
+
+[workspace.dependencies]
+raw-window-handle = "0.5"
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c729f3aa99476ba3efa50129c5e86cad3" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149ec4d62757d0b448809148a0c3ca6e09a95", default-features = false }
 
 [dependencies]
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "579130ecb4f9f315ae52190af42f0ea46aeaa4a2" }
-cfg-if = "1"
-window_clipboard = "0.4.1"
-iced_runtime = "0.13"
-iced_renderer = "0.13"
-iced_graphics = "0.13"
-iced_widget = "0.13"
-keyboard-types = { version = "0.6", default-features = false }
-log = "0.4"
-raw-window-handle = "0.5"
+baseview.workspace = true
+raw-window-handle.workspace = true
 raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
-thiserror = "1.0"
-sysinfo = { version = "0.30", optional = true }
+window_clipboard = { version = "0.5", default-features = false }
+thiserror = "2.0"
+tracing = { version = "0.1", optional = true }
+nih_plug = { workspace = true, optional = true }
+iced_debug = "0.14.0"
+iced_program = "0.14.0"
+iced_renderer = { version = "0.14.0" }
+iced_widget = "0.14.0"
+iced_devtools = { version = "0.14.0", optional = true }
+iced_futures = "0.14.0"
+iced_core = "0.14.0"
+iced_runtime = "0.14.0"
+iced_highlighter = { version = "0.14.0", optional = true }
+image = { version = "0.25", default-features = false, optional = true }
+keyboard-types = { version = "0.6", default-features = false }
+sysinfo = { version = "0.33", optional = true }
+
+[dev-dependencies]
+tracing-subscriber = "0.3.22"

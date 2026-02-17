@@ -1,49 +1,51 @@
 use iced_baseview::{
+    application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    settings::IcedBaseviewSettings,
-    widget::{column, container, slider, text, vertical_slider},
-    Application, Center, Element, Fill, Renderer, Settings, Task, Theme,
+    widget::{column, container, slider, text, vertical_slider, Column},
+    Center, Fill, IcedBaseviewSettings, Task, Theme,
 };
 
 fn main() {
-    let settings = Settings {
-        window: WindowOpenOptions {
-            title: String::from("iced_baseview slider demo"),
-            size: Size::new(500.0, 320.0),
-            scale: WindowScalePolicy::SystemScaleFactor,
-        },
-        graphics_settings: iced_graphics::Settings {
-            ..Default::default()
-        },
-        iced_baseview: IcedBaseviewSettings {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish(),
+    )
+    .unwrap();
 
-    iced_baseview::open_blocking::<MyProgram>((), settings);
+    iced_baseview::open_blocking(
+        IcedBaseviewSettings {
+            window: WindowOpenOptions {
+                title: String::from("iced_baseview slider"),
+                size: Size::new(500.0, 300.0),
+                scale: WindowScalePolicy::SystemScaleFactor,
+            },
+            ..Default::default()
+        },
+        || {
+            application(MyProgram::default, MyProgram::update, MyProgram::view)
+                .theme(MyProgram::theme)
+                .run()
+        },
+    );
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Message {
-    SliderChanged(u8),
+    SliderChanged(f32),
 }
 
+#[derive(Default)]
 struct MyProgram {
-    value: u8,
+    value: f32,
 }
 
-impl Application for MyProgram {
-    type Message = Message;
-    type Flags = ();
-    type Theme = Theme;
-    type Executor = iced_baseview::executor::Default;
-
-    fn new(_flags: Self::Flags) -> (Self, Task<Self::Message>) {
-        (Self { value: 0 }, Task::none())
+impl MyProgram {
+    pub fn theme(&self) -> Option<Theme> {
+        Some(iced_baseview::Theme::Dark)
     }
 
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SliderChanged(value) => {
                 self.value = value;
@@ -53,22 +55,24 @@ impl Application for MyProgram {
         Task::none()
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
+    pub fn view(&self) -> Column<'_, Message> {
         let h_slider = container(
-            slider(1..=100, self.value, Message::SliderChanged)
-                .default(50)
-                .shift_step(5),
+            slider(0.0..=1.0, self.value, Message::SliderChanged)
+                .default(0.5)
+                .step(0.01)
+                .shift_step(0.1),
         )
         .width(250);
 
         let v_slider = container(
-            vertical_slider(1..=100, self.value, Message::SliderChanged)
-                .default(50)
-                .shift_step(5),
+            vertical_slider(0.0..=1.0, self.value, Message::SliderChanged)
+                .default(0.5)
+                .step(0.01)
+                .shift_step(0.1),
         )
         .height(200);
 
-        let text = text(self.value);
+        let text = text(format!("{:.2}", self.value));
 
         column![v_slider, h_slider, text,]
             .width(Fill)
@@ -76,9 +80,5 @@ impl Application for MyProgram {
             .spacing(20)
             .padding(20)
             .into()
-    }
-
-    fn theme(&self) -> Self::Theme {
-        Theme::Dark
     }
 }

@@ -1,27 +1,33 @@
 use iced_baseview::{
+    application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    settings::IcedBaseviewSettings,
-    widget::{checkbox, column, text, text_input},
-    Application, Center, Element, Fill, Font, Pixels, Renderer, Settings, Task, Theme,
+    widget::{checkbox, column, text, text_input, Column},
+    Center, Fill, Font, IcedBaseviewSettings, Pixels, Task, Theme,
 };
 
 fn main() {
-    let settings = Settings {
-        window: WindowOpenOptions {
-            title: String::from("iced_baseview counter demo"),
-            size: Size::new(500.0, 420.0),
-            scale: WindowScalePolicy::SystemScaleFactor,
-        },
-        graphics_settings: iced_graphics::Settings {
-            ..Default::default()
-        },
-        iced_baseview: IcedBaseviewSettings {
-            ..Default::default()
-        },
-        ..Default::default()
-    };
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish(),
+    )
+    .unwrap();
 
-    iced_baseview::open_blocking::<MyProgram>((), settings);
+    iced_baseview::open_blocking(
+        IcedBaseviewSettings {
+            window: WindowOpenOptions {
+                title: String::from("iced_baseview text input"),
+                size: Size::new(500.0, 500.0),
+                scale: WindowScalePolicy::SystemScaleFactor,
+            },
+            ..Default::default()
+        },
+        || {
+            application(MyProgram::default, MyProgram::update, MyProgram::view)
+                .theme(MyProgram::theme)
+                .run()
+        },
+    );
 }
 
 #[derive(Debug, Clone)]
@@ -31,30 +37,19 @@ enum Message {
     ToggleTextInputIcon(bool),
 }
 
+#[derive(Default)]
 struct MyProgram {
     input_value: String,
     input_is_secure: bool,
     input_is_showing_icon: bool,
 }
 
-impl Application for MyProgram {
-    type Message = Message;
-    type Flags = ();
-    type Theme = Theme;
-    type Executor = iced_baseview::executor::Default;
-
-    fn new(_flags: Self::Flags) -> (Self, Task<Self::Message>) {
-        (
-            Self {
-                input_value: String::new(),
-                input_is_secure: false,
-                input_is_showing_icon: false,
-            },
-            Task::none(),
-        )
+impl MyProgram {
+    pub fn theme(&self) -> Option<Theme> {
+        Some(iced_baseview::Theme::Dark)
     }
 
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::InputChanged(input_value) => {
                 self.input_value = input_value;
@@ -70,7 +65,7 @@ impl Application for MyProgram {
         Task::none()
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
+    pub fn view(&self) -> Column<'_, Message> {
         let value = &self.input_value;
         let is_secure = self.input_is_secure;
         let is_showing_icon = self.input_is_showing_icon;
@@ -95,8 +90,16 @@ impl Application for MyProgram {
         container
             .push("Use a text input to ask for different kinds of information.")
             .push(text_input.secure(is_secure))
-            .push(checkbox("Enable password mode", is_secure).on_toggle(Message::ToggleSecureInput))
-            .push(checkbox("Show icon", is_showing_icon).on_toggle(Message::ToggleTextInputIcon))
+            .push(
+                checkbox(is_secure)
+                    .label("Enable password mode")
+                    .on_toggle(Message::ToggleSecureInput),
+            )
+            .push(
+                checkbox(is_showing_icon)
+                    .label("Show icon")
+                    .on_toggle(Message::ToggleTextInputIcon),
+            )
             .push(
                 "A text input produces a message every time it changes. It is \
                  very easy to keep track of its contents:",
@@ -111,9 +114,5 @@ impl Application for MyProgram {
                 .align_x(Center),
             )
             .into()
-    }
-
-    fn theme(&self) -> Self::Theme {
-        Theme::Dark
     }
 }

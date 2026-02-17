@@ -1,4 +1,5 @@
 use baseview::Event as BaseEvent;
+use baseview::PhyPoint;
 use iced_runtime::core::mouse::Button as IcedMouseButton;
 use iced_runtime::core::mouse::Event as IcedMouseEvent;
 use iced_runtime::core::window::Event as IcedWindowEvent;
@@ -12,9 +13,10 @@ use raw_window_handle::HasRawWindowHandle;
 
 pub fn baseview_to_iced_events(
     event: BaseEvent,
-    iced_events: &mut Vec<IcedEvent>,
+    iced_events: &mut Vec<(iced_core::window::Id, IcedEvent)>,
     iced_modifiers: &mut IcedModifiers,
     ignore_non_modifier_keys: bool,
+    window_id: iced_core::window::Id,
 ) {
     match event {
         BaseEvent::Mouse(mouse_event) => match mouse_event {
@@ -23,52 +25,73 @@ pub fn baseview_to_iced_events(
                 modifiers,
             } => {
                 if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
-                    iced_events.push(event);
+                    iced_events.push((window_id, event));
                 }
-                iced_events.push(IcedEvent::Mouse(IcedMouseEvent::CursorMoved {
-                    position: Point::new(position.x as f32, position.y as f32),
-                }));
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Mouse(IcedMouseEvent::CursorMoved {
+                        position: Point::new(position.x as f32, position.y as f32),
+                    }),
+                ));
             }
             baseview::MouseEvent::ButtonPressed { button, modifiers } => {
                 if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
-                    iced_events.push(event);
+                    iced_events.push((window_id, event));
                 }
-                iced_events.push(IcedEvent::Mouse(IcedMouseEvent::ButtonPressed(
-                    baseview_mouse_button_to_iced(button),
-                )));
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Mouse(IcedMouseEvent::ButtonPressed(
+                        baseview_mouse_button_to_iced(button),
+                    )),
+                ));
             }
             baseview::MouseEvent::ButtonReleased { button, modifiers } => {
                 if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
-                    iced_events.push(event);
+                    iced_events.push((window_id, event));
                 }
-                iced_events.push(IcedEvent::Mouse(IcedMouseEvent::ButtonReleased(
-                    baseview_mouse_button_to_iced(button),
-                )));
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Mouse(IcedMouseEvent::ButtonReleased(
+                        baseview_mouse_button_to_iced(button),
+                    )),
+                ));
             }
             baseview::MouseEvent::WheelScrolled { delta, modifiers } => match delta {
                 baseview::ScrollDelta::Lines { x, y } => {
                     if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
-                        iced_events.push(event);
+                        iced_events.push((window_id, event));
                     }
-                    iced_events.push(IcedEvent::Mouse(IcedMouseEvent::WheelScrolled {
-                        delta: iced_runtime::core::mouse::ScrollDelta::Lines { x, y },
-                    }));
+                    iced_events.push((
+                        window_id,
+                        IcedEvent::Mouse(IcedMouseEvent::WheelScrolled {
+                            delta: iced_runtime::core::mouse::ScrollDelta::Lines { x, y },
+                        }),
+                    ));
                 }
                 baseview::ScrollDelta::Pixels { x, y } => {
                     if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
-                        iced_events.push(event);
+                        iced_events.push((window_id, event));
                     }
-                    iced_events.push(IcedEvent::Mouse(IcedMouseEvent::WheelScrolled {
-                        delta: iced_runtime::core::mouse::ScrollDelta::Pixels { x, y },
-                    }));
+                    iced_events.push((
+                        window_id,
+                        IcedEvent::Mouse(IcedMouseEvent::WheelScrolled {
+                            delta: iced_runtime::core::mouse::ScrollDelta::Pixels { x, y },
+                        }),
+                    ));
                 }
             },
+            baseview::MouseEvent::CursorLeft => {
+                iced_events.push((window_id, IcedEvent::Mouse(IcedMouseEvent::CursorLeft)));
+            }
+            baseview::MouseEvent::CursorEntered => {
+                iced_events.push((window_id, IcedEvent::Mouse(IcedMouseEvent::CursorEntered)));
+            }
             _ => {}
         },
 
         BaseEvent::Keyboard(event) => {
             if let Some(event) = update_modifiers(iced_modifiers, event.modifiers) {
-                iced_events.push(event);
+                iced_events.push((window_id, event));
             }
 
             if ignore_non_modifier_keys {
@@ -83,6 +106,14 @@ pub fn baseview_to_iced_events(
             let key = baseview_to_iced_key(event.key);
             let location = baseview_key_location_to_iced(event.location);
 
+            let physical_key = if let Some(code) = baseview_to_iced_keycode(event.code) {
+                iced_runtime::core::keyboard::key::Physical::Code(code)
+            } else {
+                iced_runtime::core::keyboard::key::Physical::Unidentified(
+                    iced_runtime::core::keyboard::key::NativeCode::Unidentified,
+                )
+            };
+
             if is_down {
                 let text = if let iced_runtime::core::keyboard::Key::Character(s) = &key {
                     Some(s.clone())
@@ -90,39 +121,41 @@ pub fn baseview_to_iced_events(
                     None
                 };
 
-                let physical_key = if let Some(code) = baseview_to_iced_keycode(event.code) {
-                    iced_runtime::core::keyboard::key::Physical::Code(code)
-                } else {
-                    iced_runtime::core::keyboard::key::Physical::Unidentified(
-                        iced_runtime::core::keyboard::key::NativeCode::Unidentified,
-                    )
-                };
-
-                iced_events.push(IcedEvent::Keyboard(IcedKeyEvent::KeyPressed {
-                    key: key.clone(),
-                    modified_key: key,
-                    physical_key,
-                    modifiers: *iced_modifiers,
-                    location,
-                    text,
-                }));
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Keyboard(IcedKeyEvent::KeyPressed {
+                        key: key.clone(),
+                        modified_key: key,
+                        physical_key,
+                        modifiers: *iced_modifiers,
+                        location,
+                        text,
+                        repeat: event.repeat,
+                    }),
+                ));
             } else {
-                iced_events.push(IcedEvent::Keyboard(IcedKeyEvent::KeyReleased {
-                    key,
-                    location,
-                    modifiers: *iced_modifiers,
-                }));
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Keyboard(IcedKeyEvent::KeyReleased {
+                        key: key.clone(),
+                        location,
+                        modifiers: *iced_modifiers,
+                        modified_key: key,
+                        physical_key,
+                    }),
+                ));
             }
         }
 
         BaseEvent::Window(window_event) => match window_event {
             baseview::WindowEvent::Resized(window_info) => {
-                iced_events.push(IcedEvent::Window(IcedWindowEvent::Resized(
-                    iced_runtime::core::Size {
+                iced_events.push((
+                    window_id,
+                    IcedEvent::Window(IcedWindowEvent::Resized(iced_runtime::core::Size {
                         width: window_info.logical_size().width as f32,
                         height: window_info.logical_size().height as f32,
-                    },
-                )));
+                    })),
+                ));
             }
             baseview::WindowEvent::Unfocused => {
                 *iced_modifiers = IcedModifiers::empty();
@@ -179,15 +212,13 @@ fn baseview_mouse_button_to_iced(id: baseview::MouseButton) -> IcedMouseButton {
     }
 }
 
-/*
 /// Converts a physical cursor position to a logical `Point`.
-pub fn cursor_position(position: PhyPoint, scale_factor: f64) -> Point {
+pub fn cursor_position(position: PhyPoint, scale_factor: f32) -> Point {
     Point::new(
-        (f64::from(position.x) * scale_factor) as f32,
-        (f64::from(position.y) * scale_factor) as f32,
+        (f64::from(position.x) * scale_factor as f64) as f32,
+        (f64::from(position.y) * scale_factor as f64) as f32,
     )
 }
-*/
 
 /*
 // As defined in: http://www.unicode.org/faq/private_use.html
@@ -682,7 +713,7 @@ pub fn convert_mouse_interaction(
         ICursor::Grab => BCursor::HandGrabbing,
         ICursor::Text => BCursor::Text,
         ICursor::Crosshair => BCursor::Crosshair,
-        ICursor::Working => BCursor::Working,
+        ICursor::Progress => BCursor::Working,
         ICursor::Grabbing => BCursor::HandGrabbing,
         ICursor::ResizingHorizontally => BCursor::ColResize,
         ICursor::ResizingVertically => BCursor::RowResize,
@@ -695,6 +726,14 @@ pub fn convert_mouse_interaction(
         ICursor::Move => BCursor::Move,
         ICursor::Copy => BCursor::Copy,
         ICursor::Help => BCursor::Help,
+        ICursor::Wait => BCursor::Working,
+        ICursor::Hidden => BCursor::Hidden,
+        ICursor::ContextMenu => BCursor::Default,
+        ICursor::Alias => BCursor::Alias,
+        ICursor::NoDrop => BCursor::NotAllowed,
+        ICursor::ResizingColumn => BCursor::ColResize,
+        ICursor::ResizingRow => BCursor::RowResize,
+        ICursor::AllScroll => BCursor::AllScroll,
     }
 }
 

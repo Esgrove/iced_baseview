@@ -1,22 +1,30 @@
 # `iced_baseview`
 
 ![Test](https://github.com/BillyDM/iced_baseview/workflows/Rust/badge.svg)
-[![Crates.io](https://img.shields.io/crates/v/iced_baseview.svg)](https://crates.io/crates/iced_baseview)
-[![License](https://img.shields.io/crates/l/iced_baseview.svg)](https://github.com/BillyDM/iced_baseview/blob/main/LICENSE)
+[![License](https://img.shields.io/crates/l/iced_baseview.svg)](https://codeberg.org/BillyDM/iced_baseview/src/branch/main/LICENSE)
 
-A [baseview] backend for the [Iced] GUI library
+A [`baseview`](https://github.com/RustAudio/baseview) backend for [`Iced`](https://github.com/hecrj/iced). This also contains an adapter for [`NIH-plug`](https://github.com/robbert-vdh/nih-plug) (WIP).
 
 <div align="center">
     <img src="screenshot.png">
 </div>
 
-The [main branch](https://github.com/BillyDM/iced_baseview/tree/main) of this repository tracks the latest crates.io release of iced, while [iced_git  branch](https://github.com/BillyDM/iced_baseview/tree/iced_git) tracks its git repository.
+The [main branch](https://codeberg.org/BillyDM/iced_baseview/src/branch/main) of this repository tracks the latest crates.io release of iced, while [iced_git  branch](https://codeberg.org/BillyDM/iced_baseview/src/branch/iced_git) (WIP) tracks its git repository.
 
-## VST3 / CLAP / AU Plugins
+## How to use with custom plugin framework
 
-Examples of how to use this library for audio plugins can be found here:
-* [nih_plug_iced](https://github.com/robbert-vdh/nih-plug/tree/master/nih_plug_iced)
-* [iced-baseplug-examples](https://github.com/BillyDM/iced-baseplug-examples)
+*TODO*
 
-[Iced]: https://github.com/hecrj/iced
-[baseview]: https://github.com/RustAudio/baseview
+## How to use with NIH-plug
+
+*TODO*
+
+## Prerequisites
+
+### Linux
+
+Install dependencies, e.g.,
+
+```sh
+sudo apt-get install libx11-dev libxcursor-dev libxcb-dri2-0-dev libxcb-icccm4-dev libx11-xcb-dev mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev
+```

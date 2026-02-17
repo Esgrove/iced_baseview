@@ -1,4 +1,4 @@
-use crate::futures::futures;
+use crate::futures;
 use crate::graphics;
 
 /// An error that occurred while running an application.
@@ -18,7 +18,18 @@ pub enum Error {
 }
 
 impl From<graphics::Error> for Error {
-    fn from(error: iced_graphics::Error) -> Error {
+    fn from(error: graphics::Error) -> Error {
         Error::GraphicsCreationFailed(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assert_send_sync() {
+        fn _assert<T: Send + Sync>() {}
+        _assert::<Error>();
     }
 }

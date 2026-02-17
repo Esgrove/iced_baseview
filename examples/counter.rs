@@ -1,32 +1,33 @@
 use iced_baseview::{
+    application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    settings::IcedBaseviewSettings,
-    widget::{button, column, text},
-    Application, Center, Element, Renderer, Settings, Task, Theme,
+    widget::{button, column, text, Column},
+    Center, IcedBaseviewSettings, Theme,
 };
 
 fn main() {
-    let settings = Settings {
-        window: WindowOpenOptions {
-            title: String::from("iced_baseview counter demo"),
-            size: Size::new(500.0, 300.0),
-            scale: WindowScalePolicy::SystemScaleFactor,
-        },
-        graphics_settings: iced_graphics::Settings {
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish(),
+    )
+    .unwrap();
+
+    iced_baseview::open_blocking(
+        IcedBaseviewSettings {
+            window: WindowOpenOptions {
+                title: String::from("iced_baseview counter"),
+                size: Size::new(500.0, 300.0),
+                scale: WindowScalePolicy::SystemScaleFactor,
+            },
             ..Default::default()
         },
-        iced_baseview: IcedBaseviewSettings {
-            ..Default::default()
+        || {
+            application(MyProgram::default, MyProgram::update, MyProgram::view)
+                .theme(MyProgram::theme)
+                .run()
         },
-        ..Default::default()
-    };
-
-    iced_baseview::open_blocking::<MyProgram>(Flags::default(), settings);
-}
-
-#[derive(Default)]
-struct Flags {
-    initial_value: i64,
+    );
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,26 +36,17 @@ enum Message {
     Decrement,
 }
 
+#[derive(Default)]
 struct MyProgram {
     value: i64,
 }
 
-impl Application for MyProgram {
-    type Message = Message;
-    type Flags = Flags;
-    type Theme = Theme;
-    type Executor = iced_baseview::executor::Default;
-
-    fn new(flags: Flags) -> (Self, Task<Self::Message>) {
-        (
-            Self {
-                value: flags.initial_value,
-            },
-            Task::none(),
-        )
+impl MyProgram {
+    pub fn theme(&self) -> Option<Theme> {
+        Some(iced_baseview::Theme::Dark)
     }
 
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    pub fn update(&mut self, message: Message) {
         match message {
             Message::Increment => {
                 self.value += 1;
@@ -63,13 +55,9 @@ impl Application for MyProgram {
                 self.value -= 1;
             }
         }
-
-        dbg!(self.value);
-
-        Task::none()
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
+    pub fn view(&self) -> Column<'_, Message> {
         column![
             button("Increment").on_press(Message::Increment),
             text(self.value).size(50),
@@ -77,10 +65,5 @@ impl Application for MyProgram {
         ]
         .padding(20)
         .align_x(Center)
-        .into()
-    }
-
-    fn theme(&self) -> Self::Theme {
-        Theme::Dark
     }
 }

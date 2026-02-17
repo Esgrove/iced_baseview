@@ -1,57 +1,55 @@
 use iced_baseview::{
+    application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    widget::{Column, Container, Rule, Text},
-    Alignment, Application, Element, Length, Renderer, Settings, Task, Theme,
+    widget::{Column, Container, Text},
+    Alignment, IcedBaseviewSettings, Length, Theme,
 };
 
 fn main() {
-    let settings = Settings {
-        window: WindowOpenOptions {
-            title: String::from("iced_baseview hello world"),
-            size: Size::new(500.0, 300.0),
-            scale: WindowScalePolicy::SystemScaleFactor,
-        },
-        ..Default::default()
-    };
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish(),
+    )
+    .unwrap();
 
-    iced_baseview::open_blocking::<MyProgram>((), settings);
+    iced_baseview::open_blocking(
+        IcedBaseviewSettings {
+            window: WindowOpenOptions {
+                title: String::from("iced_baseview hello world"),
+                size: Size::new(500.0, 300.0),
+                scale: WindowScalePolicy::SystemScaleFactor,
+            },
+            ..Default::default()
+        },
+        || {
+            application(MyProgram::default, MyProgram::update, MyProgram::view)
+                .theme(MyProgram::theme)
+                .run()
+        },
+    );
 }
 
+#[derive(Default)]
 struct MyProgram;
 
-impl Application for MyProgram {
-    type Message = ();
-    type Flags = ();
-    type Theme = Theme;
-    type Executor = iced_baseview::executor::Default;
-
-    fn new(_flags: ()) -> (Self, Task<Self::Message>) {
-        (Self {}, Task::none())
+impl MyProgram {
+    pub fn theme(&self) -> Option<Theme> {
+        Some(iced_baseview::Theme::Dark)
     }
 
-    fn title(&self) -> String {
-        "Hello World!".into()
-    }
+    pub fn update(&mut self, _message: ()) {}
 
-    fn update(&mut self, _message: Self::Message) -> Task<Self::Message> {
-        Task::none()
-    }
-
-    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
+    pub fn view(&self) -> Container<'_, ()> {
         let content = Column::new()
             .width(Length::Fill)
             .align_x(Alignment::Center)
-            .push(Text::new("Hello World!"))
-            .push(Rule::horizontal(10));
+            .push(Text::new("Hello World!"));
 
         Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .center(Length::Fill)
             .into()
-    }
-
-    fn theme(&self) -> Self::Theme {
-        Theme::Dark
     }
 }

@@ -1,92 +1,96 @@
-//! A windowing shell for Iced, on top of [`baseview`].
-//!
-//! Largely stolen from (MIT licensed) [`iced_winit`].
-//!
-//! [`baseview`]: https://github.com/RustAudio/baseview
-//! [`iced_winit`]: https://github.com/iced-rs/iced/tree/master/winit
-#![deny(
-    // missing_debug_implementations,
-    // missing_docs,
-    unused_results,
-    clippy::extra_unused_lifetimes,
-    clippy::from_over_into,
-    clippy::needless_borrow,
-    clippy::new_without_default,
-    clippy::useless_conversion,
-)]
-#![forbid(rust_2018_idioms)]
-#![allow(clippy::inherent_to_string, clippy::type_complexity)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
-pub use iced_graphics as graphics;
-pub use iced_graphics::Viewport;
-use iced_renderer::Compositor;
-pub use iced_runtime as runtime;
-pub use iced_runtime::core::{
-    self, alignment, border, color, gradient, padding, theme, Alignment, Background, Border, Color,
-    ContentFit, Degrees, Gradient, Length, Padding, Pixels, Point, Radians, Rectangle, Rotation,
+#[cfg(not(any(
+    target_arch = "wasm32",
+    feature = "thread-pool",
+    feature = "tokio",
+    feature = "smol"
+)))]
+compile_error!(
+    "No futures executor has been enabled! You must enable an \
+    executor feature.\n\
+    Available options: thread-pool, tokio, or smol."
+);
+
+#[cfg(all(
+    target_family = "unix",
+    not(target_os = "macos"),
+    //not(feature = "wayland"),
+    not(feature = "x11"),
+))]
+compile_error!(
+    "No Unix display server backend has been enabled. You must enable a \
+    display server feature.\n\
+    Available options: x11, wayland."
+);
+
+pub use baseview;
+pub use iced_program as program;
+use iced_widget::graphics;
+use iced_widget::renderer;
+pub use program::core;
+pub use program::runtime;
+
+pub use iced_futures::futures;
+pub use iced_futures::stream;
+
+pub mod application;
+pub mod shell;
+pub mod time;
+
+mod error;
+
+#[cfg(feature = "highlighter")]
+pub use iced_highlighter as highlighter;
+
+#[cfg(feature = "wgpu")]
+pub use iced_renderer::wgpu::wgpu;
+
+#[cfg(feature = "advanced")]
+pub mod advanced;
+
+pub use crate::core::alignment;
+pub use crate::core::animation;
+pub use crate::core::border;
+pub use crate::core::color;
+pub use crate::core::gradient;
+pub use crate::core::padding;
+pub use crate::core::theme;
+pub use crate::core::{
+    never, Alignment, Animation, Background, Border, Color, ContentFit, Degrees, Function,
+    Gradient, Length, Never, Padding, Pixels, Point, Radians, Rectangle, Rotation, Settings,
     Shadow, Size, Theme, Transformation, Vector,
 };
-pub use iced_runtime::futures;
+pub use crate::program::message;
+pub use crate::program::Preset;
+pub use crate::runtime::exit;
+pub use iced_futures::Subscription;
 
 pub use alignment::Horizontal::{Left, Right};
 pub use alignment::Vertical::{Bottom, Top};
 pub use Alignment::Center;
 pub use Length::{Fill, FillPortion, Shrink};
 
+pub mod debug {
+    //! Debug your applications.
+    pub use iced_debug::{time, time_with, Span};
+}
+
 pub mod task {
     //! Create runtime tasks.
     pub use crate::runtime::task::{Handle, Task};
+
+    #[cfg(feature = "sipper")]
+    pub use crate::runtime::task::{sipper, stream, Never, Sipper, Straw};
 }
 
-pub mod application;
-pub mod clipboard;
-pub mod conversion;
-pub mod settings;
-pub mod window;
-
-#[cfg(feature = "system")]
-pub mod system;
-
-mod error;
-mod position;
-mod proxy;
-
-pub use application::{Appearance, Application, DefaultStyle};
-pub use clipboard::Clipboard;
-pub use error::Error;
-pub use event::Event;
-pub use executor::Executor;
-pub use font::Font;
-pub use position::Position;
-#[cfg(feature = "trace")]
-pub use program::Profiler;
-pub use proxy::Proxy;
-pub use renderer::Renderer;
-pub use settings::{GraphicsSettings, IcedBaseviewSettings, Settings};
-pub use task::Task;
-pub use window::WindowSubs;
-
-pub mod baseview {
-    pub use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
+pub mod clipboard {
+    //! Access the clipboard.
+    pub use crate::runtime::clipboard::{read, read_primary, write, write_primary};
 }
-
-pub use iced_widget::renderer;
 
 pub mod executor {
     //! Choose your preferred executor to power your application.
-    pub use iced_runtime::futures::Executor;
-
-    /// A default cross-platform executor.
-    ///
-    /// - On native platforms, it will use:
-    ///   - `iced_futures::backend::native::tokio` when the `tokio` feature is enabled.
-    ///   - `iced_futures::backend::native::async-std` when the `async-std` feature is
-    ///     enabled.
-    ///   - `iced_futures::backend::native::smol` when the `smol` feature is enabled.
-    ///   - `iced_futures::backend::native::thread_pool` otherwise.
-    ///
-    /// - On Wasm, it will use `iced_futures::backend::wasm::wasm_bindgen`.
-    pub type Default = iced_runtime::futures::backend::default::Executor;
+    pub use iced_futures::backend::default::Executor as Default;
+    pub use iced_futures::Executor;
 }
 
 pub mod font {
@@ -98,19 +102,25 @@ pub mod font {
 pub mod event {
     //! Handle events of a user interface.
     pub use crate::core::event::{Event, Status};
-    pub use iced_runtime::futures::event::{listen, listen_raw, listen_with};
+    pub use iced_futures::event::{listen, listen_raw, listen_with};
 }
 
 pub mod keyboard {
     //! Listen and react to keyboard events.
     pub use crate::core::keyboard::key;
     pub use crate::core::keyboard::{Event, Key, Location, Modifiers};
-    pub use iced_runtime::futures::keyboard::{on_key_press, on_key_release};
+    pub use iced_futures::keyboard::listen;
 }
 
 pub mod mouse {
     //! Listen and react to mouse events.
     pub use crate::core::mouse::{Button, Cursor, Event, Interaction, ScrollDelta};
+}
+
+#[cfg(feature = "sysinfo")]
+pub mod system {
+    //! Retrieve system information.
+    pub use crate::runtime::system::{information, Information};
 }
 
 pub mod overlay {
@@ -135,16 +145,40 @@ pub mod touch {
 #[allow(hidden_glob_reexports)]
 pub mod widget {
     //! Use the built-in widgets or create your own.
+    pub use iced_runtime::widget::*;
     pub use iced_widget::*;
+
+    #[cfg(feature = "image")]
+    pub mod image {
+        //! Images display raster graphics in different formats (PNG, JPG, etc.).
+        pub use iced_runtime::image::{allocate, Allocation, Error};
+        pub use iced_widget::image::*;
+    }
 
     // We hide the re-exported modules by `iced_widget`
     mod core {}
     mod graphics {}
-    mod native {}
     mod renderer {}
-    mod style {}
-    mod runtime {}
 }
+
+pub mod window {
+    pub use crate::core::window::*;
+    pub use crate::runtime::window::*;
+}
+
+pub use application::Application;
+pub use error::Error;
+pub use event::Event;
+pub use executor::Executor;
+pub use font::Font;
+pub use program::Program;
+pub use renderer::Renderer;
+pub use shell::{open_blocking, open_parented, settings::IcedBaseviewSettings};
+pub use task::Task;
+pub use window::Window;
+
+#[doc(inline)]
+pub use application::application;
 
 /// A generic widget.
 ///
@@ -154,25 +188,3 @@ pub type Element<'a, Message, Theme = crate::Theme, Renderer = crate::Renderer> 
 
 /// The result of running an iced program.
 pub type Result = std::result::Result<(), Error>;
-
-/// Runs the [`Application`] in a child window.
-pub fn open_parented<A, W>(
-    parent: &W,
-    flags: A::Flags,
-    settings: Settings,
-) -> window::WindowHandle<A::Message>
-where
-    A: Application + Send + 'static,
-    A::Flags: Send,
-    W: raw_window_handle::HasRawWindowHandle,
-{
-    window::IcedWindow::<A>::open_parented::<W, Compositor>(parent, flags, settings)
-}
-
-pub fn open_blocking<A>(flags: A::Flags, settings: Settings)
-where
-    A: Application + Send + 'static,
-    A::Flags: Send,
-{
-    window::IcedWindow::<A>::open_blocking::<Compositor>(flags, settings)
-}
