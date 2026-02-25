@@ -93,6 +93,10 @@ impl<P: Program + 'static> WindowHandler for IcedWindowHandler<P> {
             return;
         }
 
+        self.sender
+            .start_send(RuntimeEvent::Poll)
+            .expect("Send event");
+
         // Flush all messages. This will block until the instance is finished.
         let _ = self.instance.as_mut().poll(&mut self.runtime_context);
 
@@ -238,6 +242,12 @@ impl<Message: 'static + Send> WindowHandle<Message> {
     /// was closed/dropped.
     pub fn is_open(&self) -> bool {
         self.bv_handle.is_open()
+    }
+}
+
+impl<Message: 'static + Send> Drop for WindowHandle<Message> {
+    fn drop(&mut self) {
+        self.close_window();
     }
 }
 

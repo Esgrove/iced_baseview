@@ -2,7 +2,7 @@ use iced_baseview::{
     application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
     widget::{checkbox, column, text, text_input, Column},
-    Center, Fill, Font, IcedBaseviewSettings, Pixels, Task, Theme,
+    Center, Fill, Font, IcedBaseviewSettings, Pixels, PollSubNotifier, Task, Theme,
 };
 
 fn main() {
@@ -22,6 +22,7 @@ fn main() {
             },
             ..Default::default()
         },
+        PollSubNotifier::new(),
         || {
             application(MyProgram::default, MyProgram::update, MyProgram::view)
                 .theme(MyProgram::theme)

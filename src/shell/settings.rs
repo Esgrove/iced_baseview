@@ -35,3 +35,17 @@ impl Default for IcedBaseviewSettings {
         }
     }
 }
+
+impl Clone for IcedBaseviewSettings {
+    fn clone(&self) -> Self {
+        Self {
+            window: WindowOpenOptions {
+                title: self.window.title.clone(),
+                size: self.window.size,
+                scale: self.window.scale,
+            },
+            ignore_non_modifier_keys: self.ignore_non_modifier_keys,
+            always_redraw: self.always_redraw,
+        }
+    }
+}

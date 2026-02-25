@@ -1,4 +1,5 @@
 //! An [`Application`] that receives an [`Instant`] in update logic.
+
 use crate::application::{Application, BootFn, ViewFn};
 use crate::program;
 use crate::theme;

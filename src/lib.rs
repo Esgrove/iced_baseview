@@ -32,7 +32,9 @@ pub use program::runtime;
 pub use iced_futures::futures;
 pub use iced_futures::stream;
 
+#[cfg(feature = "app-builder")]
 pub mod application;
+
 pub mod shell;
 pub mod time;
 
@@ -166,17 +168,22 @@ pub mod window {
     pub use crate::runtime::window::*;
 }
 
+#[cfg(feature = "app-builder")]
 pub use application::Application;
+
 pub use error::Error;
 pub use event::Event;
 pub use executor::Executor;
 pub use font::Font;
 pub use program::Program;
 pub use renderer::Renderer;
-pub use shell::{open_blocking, open_parented, settings::IcedBaseviewSettings};
+pub use shell::{
+    open_blocking, open_parented, poll_events, settings::IcedBaseviewSettings, PollSubNotifier,
+};
 pub use task::Task;
 pub use window::Window;
 
+#[cfg(feature = "app-builder")]
 #[doc(inline)]
 pub use application::application;
 

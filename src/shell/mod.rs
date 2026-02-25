@@ -1,15 +1,17 @@
 use baseview::{EventStatus, WindowOpenOptions};
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
-use iced_core::{mouse, renderer, theme, Size};
+use iced_core::{mouse, renderer, theme, Point, Size};
 use iced_futures::futures::{task, StreamExt};
-use iced_futures::Executor;
 use iced_futures::{futures::channel::mpsc, subscription, Runtime};
+use iced_futures::{Executor, Subscription};
 use iced_program::Program;
 use iced_runtime::{user_interface, Action, UserInterface};
 use iced_widget::graphics::Viewport;
 use raw_window_handle::HasRawWindowHandle;
 use std::mem::ManuallyDrop;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
@@ -41,11 +43,68 @@ use window::{
 
 pub use proxy::Proxy;
 
+/// An atomic flag used to notify the program when it should poll for new updates
+/// and redraw (i.e. as a result of the host updating parameters or the audio thread
+/// updating the state of meters). This flag is polled every frame right before
+/// drawing. If the flag is set then the [`poll_events`] subscription will be called.
+#[derive(Debug, Clone)]
+pub struct PollSubNotifier {
+    notify: Arc<AtomicBool>,
+}
+
+impl PollSubNotifier {
+    pub fn new() -> Self {
+        Self {
+            notify: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub fn notify(&self) {
+        self.notify.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn notify_flag_set(&self) -> bool {
+        self.notify.swap(false, Ordering::Relaxed)
+    }
+}
+
+impl Default for PollSubNotifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// This is a bit hacky, but Iced doesn't let you define custom subscription
+// events. So instead, we use an event that is never used in baseview.
+//
+// TODO: Ask Iced team to add custom subscription events.
+const POLL_EVENT: iced_core::Event =
+    iced_core::Event::Window(iced_core::window::Event::Moved(Point::ORIGIN));
+
+/// A subscription which notifies the program when it should poll for new updates
+/// and redraw (i.e. as a result of the host updating parameters or the audio thread
+/// updating the state of meters).
+pub fn poll_events() -> Subscription<()> {
+    iced_futures::event::listen_raw(|event, _status, _window| match event {
+        POLL_EVENT => Some(()),
+        _ => None,
+    })
+}
+
 /// Open a new window that blocks the current thread until the window is destroyed.
 ///
 /// * `settings` - The settings of the window.
-pub fn open_blocking<P, B>(settings: IcedBaseviewSettings, build_program: B)
-where
+/// * `notifier` - An atomic flag used to notify the program when it should
+/// poll for new updates and redraw (i.e. as a result of the host updating parameters
+/// or the audio thread updating the state of meters). This flag is polled every frame
+/// right before drawing. If the flag is set then the [`poll_events`] subscription
+/// will be called.
+/// * `build_program` - The function which builds the Iced program.
+pub fn open_blocking<P, B>(
+    settings: IcedBaseviewSettings,
+    notifier: PollSubNotifier,
+    build_program: B,
+) where
     P: Program + 'static,
     B: Send + 'static + FnOnce() -> P,
 {
@@ -55,7 +114,7 @@ where
         clone_window_options(&settings.window),
         move |window: &mut baseview::Window<'_>| -> IcedWindowHandler<P> {
             let program = (build_program)();
-            run_inner(window, settings, program, sender, receiver).expect("Launch window")
+            run_inner(window, settings, program, sender, receiver, notifier).expect("Launch window")
         },
     );
 }
@@ -64,9 +123,16 @@ where
 ///
 /// * `parent` - The parent window.
 /// * `settings` - The settings of the window.
+/// * `notifier` - An atomic flag used to notify the program when it should
+/// poll for new updates and redraw (i.e. as a result of the host updating parameters
+/// or the audio thread updating the state of meters). This flag is polled every frame
+/// right before drawing. If the flag is set then the [`poll_events`] subscription
+/// will be called.
+/// * `build_program` - The functio which builds the Iced program.
 pub fn open_parented<W, P, B>(
     parent: &W,
     settings: IcedBaseviewSettings,
+    notifier: PollSubNotifier,
     build_program: B,
 ) -> WindowHandle<P::Message>
 where
@@ -82,7 +148,8 @@ where
         clone_window_options(&settings.window),
         move |window: &mut baseview::Window<'_>| -> IcedWindowHandler<P> {
             let program = (build_program)();
-            run_inner(window, settings, program, sender_clone, receiver).expect("Launch window")
+            run_inner(window, settings, program, sender_clone, receiver, notifier)
+                .expect("Launch window")
         },
     );
 
@@ -96,6 +163,7 @@ fn run_inner<P>(
     program: P,
     event_sender: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
     event_receiver: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
+    notifier: PollSubNotifier,
 ) -> Result<IcedWindowHandler<P>, Error>
 where
     P: Program + 'static,
@@ -213,6 +281,7 @@ where
             event_receiver,
             clipboard,
             Rc::clone(&event_status),
+            notifier,
         );
         run_instance
     });
@@ -240,6 +309,7 @@ async fn run_instance<P>(
     mut event_receiver: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
     mut clipboard: Clipboard,
     event_status: Rc<RefCell<baseview::EventStatus>>,
+    notifier: PollSubNotifier,
 ) where
     P: Program + 'static,
     P::Theme: theme::Base,
@@ -281,8 +351,31 @@ async fn run_instance<P>(
         };
 
         match event {
+            RuntimeEvent::Poll => {
+                if notifier.notify_flag_set() {
+                    runtime.broadcast(iced_futures::subscription::Event::Interaction {
+                        window: window.id,
+                        event: POLL_EVENT,
+                        status: iced_core::event::Status::Ignored,
+                    });
+                }
+            }
             RuntimeEvent::OnFrame => {
-                if !did_process_event && events.is_empty() && messages.is_empty() {
+                #[cfg(feature = "unconditional-rendering")]
+                {
+                    window.redraw_requested = true;
+                }
+
+                #[cfg(not(feature = "unconditional-rendering"))]
+                if window.always_redraw {
+                    window.redraw_requested = true;
+                }
+
+                if !window.redraw_requested
+                    && !did_process_event
+                    && events.is_empty()
+                    && messages.is_empty()
+                {
                     continue 'next_event;
                 }
                 did_process_event = false;
@@ -301,7 +394,7 @@ async fn run_instance<P>(
                     }
                 });
 
-                if window_events.is_empty() && messages.is_empty() {
+                if window_events.is_empty() && messages.is_empty() && !window.redraw_requested {
                     continue 'next_event;
                 }
 
@@ -316,16 +409,6 @@ async fn run_instance<P>(
                     &mut clipboard,
                     &mut messages,
                 );
-
-                #[cfg(feature = "unconditional-rendering")]
-                {
-                    window.redraw_requested = true;
-                }
-
-                #[cfg(not(feature = "unconditional-rendering"))]
-                if window.always_redraw {
-                    window.redraw_requested = true;
-                }
 
                 match ui_state {
                     user_interface::State::Updated {
@@ -404,7 +487,7 @@ async fn run_instance<P>(
                 // -- Draw --------------------------------------------------------------------
 
                 if let Some(redraw_at) = window.redraw_at {
-                    if redraw_at >= Instant::now() {
+                    if redraw_at <= Instant::now() {
                         window.redraw_requested = true;
                         window.redraw_at = None;
                     }
@@ -643,11 +726,13 @@ async fn run_instance<P>(
             RuntimeEvent::Baseview((event, do_send_status)) => {
                 window.state.update(&event);
 
-                /*
-                let ignore_non_modifier_keys = program
-                    .ignore_non_modifier_keys()
-                    .unwrap_or(settings.ignore_non_modifier_keys);
-                */
+                match &event {
+                    baseview::Event::Window(baseview::WindowEvent::Focused)
+                    | baseview::Event::Window(baseview::WindowEvent::Unfocused) => {
+                        window.redraw_requested = true;
+                    }
+                    _ => {}
+                }
 
                 crate::shell::conversion::baseview_to_iced_events(
                     event,
@@ -1011,6 +1096,7 @@ fn run_action<'a, P>(
 pub(crate) enum RuntimeEvent<Message: 'static + Send> {
     Baseview((baseview::Event, bool)),
     UserEvent(iced_runtime::Action<Message>),
+    Poll,
     OnFrame,
     WillClose,
 }

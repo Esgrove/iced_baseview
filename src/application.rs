@@ -17,7 +17,7 @@ pub fn application<State, Message, Theme, Renderer>(
     view: impl for<'a> ViewFn<'a, State, Message, Theme, Renderer>,
 ) -> Application<impl Program<State = State, Message = Message, Theme = Theme>>
 where
-    State: 'static,
+    State: Send + 'static,
     Message: Send + 'static,
     Theme: theme::Base,
     Renderer: program::Renderer,

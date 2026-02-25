@@ -2,7 +2,7 @@ use iced_baseview::{
     application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
     widget::{button, column, text, Column},
-    Center, IcedBaseviewSettings, Theme,
+    Center, IcedBaseviewSettings, PollSubNotifier, Theme,
 };
 
 fn main() {
@@ -22,6 +22,7 @@ fn main() {
             },
             ..Default::default()
         },
+        PollSubNotifier::new(),
         || {
             application(MyProgram::default, MyProgram::update, MyProgram::view)
                 .theme(MyProgram::theme)

@@ -159,6 +159,11 @@ pub fn baseview_to_iced_events(
             }
             baseview::WindowEvent::Unfocused => {
                 *iced_modifiers = IcedModifiers::empty();
+                iced_events.push((window_id, IcedEvent::Window(IcedWindowEvent::Unfocused)));
+            }
+            baseview::WindowEvent::Focused => {
+                *iced_modifiers = IcedModifiers::empty();
+                iced_events.push((window_id, IcedEvent::Window(IcedWindowEvent::Focused)));
             }
             _ => {}
         },
