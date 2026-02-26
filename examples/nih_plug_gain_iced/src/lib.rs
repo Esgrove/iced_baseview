@@ -32,7 +32,8 @@ pub struct Gain {
     /// An atomic flag used to notify the program when it should poll for new updates
     /// and redraw (i.e. as a result of the host updating parameters or the audio thread
     /// updating the state of meters). This flag is polled every frame right before
-    /// drawing. If the flag is set then the [`poll_events`] subscription will be called.
+    /// drawing. If the flag is set then the [`poll_events`] subscription will be called, and
+    /// the program will update and redraw.
     notifier: PollSubNotifier,
 }
 
@@ -179,12 +180,13 @@ impl Plugin for Gain {
             if self.params.window_state.is_open() {
                 amplitude = (amplitude / num_samples as f32).abs();
                 let current_peak_meter = self.peak_meter.load(Ordering::Relaxed);
-                let new_peak_meter = if amplitude > current_peak_meter {
+                let mut new_peak_meter = if amplitude > current_peak_meter {
                     amplitude
                 } else {
                     current_peak_meter * self.peak_meter_decay_weight
                         + amplitude * (1.0 - self.peak_meter_decay_weight)
                 };
+                if new_peak_meter < 0.0001 { new_peak_meter = 0.0; }
 
                 if current_peak_meter != new_peak_meter {
                     self.peak_meter.store(new_peak_meter, Ordering::Relaxed);
