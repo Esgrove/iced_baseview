@@ -3,6 +3,8 @@
 ![Test](https://github.com/BillyDM/iced_baseview/workflows/Rust/badge.svg)
 [![License](https://img.shields.io/crates/l/iced_baseview.svg)](https://codeberg.org/BillyDM/iced_baseview/src/branch/main/LICENSE)
 
+> This project has moved to a new hard fork of NIH-plug for easier maintanence: https://codeberg.org/BillyDM/nih-plug
+
 A [`baseview`](https://github.com/RustAudio/baseview) backend for [`Iced`](https://github.com/hecrj/iced). This also contains an adapter for [`NIH-plug`](https://github.com/robbert-vdh/nih-plug) (WIP).
 
 <div align="center">
