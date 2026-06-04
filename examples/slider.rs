@@ -1,8 +1,7 @@
 use iced_baseview::{
-    application,
-    baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    widget::{column, container, slider, text, vertical_slider, Column},
-    Center, Fill, IcedBaseviewSettings, PollSubNotifier, Task, Theme,
+    Center, Fill, IcedBaseviewSettings, PollSubNotifier, Task, Theme, application,
+    baseview::{Size, WindowOpenOptions},
+    widget::{Column, column, container, slider, text, vertical_slider},
 };
 
 fn main() {
@@ -18,7 +17,7 @@ fn main() {
             window: WindowOpenOptions {
                 title: String::from("iced_baseview slider"),
                 size: Size::new(500.0, 300.0),
-                scale: WindowScalePolicy::SystemScaleFactor,
+                ..Default::default()
             },
             ..Default::default()
         },
@@ -59,17 +58,17 @@ impl MyProgram {
     pub fn view(&self) -> Column<'_, Message> {
         let h_slider = container(
             slider(0.0..=1.0, self.value, Message::SliderChanged)
-                .default(0.5)
-                .step(0.01)
-                .shift_step(0.1),
+                .default(0.5f32)
+                .step(0.01f32)
+                .shift_step(0.1f32),
         )
         .width(250);
 
         let v_slider = container(
             vertical_slider(0.0..=1.0, self.value, Message::SliderChanged)
-                .default(0.5)
-                .step(0.01)
-                .shift_step(0.1),
+                .default(0.5f32)
+                .step(0.01f32)
+                .shift_step(0.1f32),
         )
         .height(200);
 

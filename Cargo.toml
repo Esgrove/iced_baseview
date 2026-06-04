@@ -1,31 +1,21 @@
 [package]
 name = "iced_baseview"
-version = "0.1.0"
+version = "0.2.4"
 authors = [
   "Billy Messenger <BillyDM@protonmail.com>",
-  "Robbert van der Helm <mail@robbertvanderhelm.nl>",
   "Joakim Frostegård <joakim.frostegard@gmail.com>",
 ]
 description = "A baseview backend for Iced"
-keywords = ["gui", "ui", "graphics", "interface", "widgets"]
+keywords = ["nice-plug", "plugin", "clap", "vst", "vst3"]
 categories = ["gui"]
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-readme.workspace = true
-
-[workspace]
-members = [
-  "nih_plug_iced",
-  "nih_plug_iced/xtask",
-  "examples/nih_plug_gain_iced"
-]
-
-[workspace.package]
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/BillyDM/iced_baseview"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+repository = "https://codeberg.org/RustAudio/iced_baseview"
 readme = "README.md"
+
+# Show documentation with all features enabled on docs.rs
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = [
@@ -38,9 +28,9 @@ default = [
   "thread-pool",
   "x11",
 ]
-# Enables logging using NIH-plug's logging feature
-nih_log = ["dep:nih_plug"]
-# Enable this if `nih_log` is disabled
+# Enables logging using nice-plug's logging feature
+nice-log = ["dep:nice-plug-core"]
+# Enable this if `nice-log` is disabled
 tracing = ["dep:tracing"]
 # Enable the default application builder method. Disable this if you wish to create your own
 # custom wrapper for users.
@@ -67,9 +57,9 @@ markdown = ["iced_widget/markdown"]
 # Enables lazy widgets
 lazy = ["iced_widget/lazy"]
 # Enables debug metrics (press F12)
-debug = ["dep:iced_devtools", "iced_debug/enable"]
+debug = ["dep:iced_devtools", "iced_program/debug", "iced_debug/enable"]
 # Enables time-travel debugging (very experimental!)
-time-travel = ["debug", "iced_devtools/time-travel"]
+time-travel = ["debug", "iced_program/time-travel", "iced_devtools/time-travel"]
 # Enables hot reloading (very experimental!)
 hot = ["debug", "iced_debug/hot"]
 # Enables the `thread-pool` futures executor as the `executor::Default`
@@ -105,63 +95,26 @@ sipper = ["iced_runtime/sipper"]
 # Enables the Unix X11 backend
 x11 = ["iced_renderer/x11", "window_clipboard/x11"]
 
-[workspace.dependencies]
-raw-window-handle = "0.5"
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "237d323c729f3aa99476ba3efa50129c5e86cad3" }
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149ec4d62757d0b448809148a0c3ca6e09a95", default-features = false }
-iced_debug = "0.14.0"
-iced_program = "0.14.0"
-iced_renderer = { version = "0.14.0" }
-iced_widget = "0.14.0"
-iced_devtools = "0.14.0"
-iced_futures = "0.14.0"
-iced_core = "0.14.0"
-iced_runtime = "0.14.0"
-iced_highlighter = "0.14.0"
-
 [dependencies]
-baseview.workspace = true
-raw-window-handle.workspace = true
-raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
+iced_debug = "0.14"
+iced_program = "0.14"
+iced_renderer = "0.14"
+iced_widget = "0.14"
+iced_devtools = { version = "0.14", optional = true }
+iced_futures = "0.14"
+iced_core = "0.14"
+iced_runtime = "0.14"
+iced_highlighter = { version = "0.14", optional = true }
 window_clipboard = { version = "0.5", default-features = false }
-thiserror = "2.0"
-tracing = { version = "0.1", optional = true }
-nih_plug = { workspace = true, optional = true }
-iced_debug.workspace = true
-iced_program.workspace = true
-iced_renderer.workspace = true
-iced_widget.workspace = true
-iced_devtools = { workspace = true, optional = true }
-iced_futures.workspace = true
-iced_core.workspace = true
-iced_runtime.workspace = true
-iced_highlighter = { workspace = true, optional = true }
+sysinfo = { version = "0.38", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 keyboard-types = { version = "0.6", default-features = false }
-sysinfo = { version = "0.33", optional = true }
+baseview = "0.1.1"
+raw-window-handle = "0.5"
+raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
+thiserror = "2"
+tracing = { version = "0.1", optional = true }
+nice-plug-core = { version = "0.1.3", optional = true }
 
 [dev-dependencies]
 tracing-subscriber = "0.3.22"
-
-# Enable a small amount of optimization in the dev profile.
-[profile.dev]
-opt-level = 1
-
-# Enable a large amount of optimization in the dev profile for dependencies.
-[profile.dev.package."*"]
-opt-level = 3
-
-# Enable more optimization in the release profile at the cost of compile time.
-[profile.release]
-# Compile the entire crate as one unit.
-# Slows compile times, marginal improvements.
-codegen-units = 1
-# Do a second optimization pass over the entire program, including dependencies.
-# Slows compile times, marginal improvements.
-lto = "thin"
-strip = true
-
-[profile.profiling]
-inherits = "release"
-debug = true
-strip = "none"

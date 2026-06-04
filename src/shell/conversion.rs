@@ -1,10 +1,10 @@
 use baseview::Event as BaseEvent;
 use baseview::PhyPoint;
+use iced_runtime::core::Event as IcedEvent;
+use iced_runtime::core::Point;
 use iced_runtime::core::mouse::Button as IcedMouseButton;
 use iced_runtime::core::mouse::Event as IcedMouseEvent;
 use iced_runtime::core::window::Event as IcedWindowEvent;
-use iced_runtime::core::Event as IcedEvent;
-use iced_runtime::core::Point;
 use iced_runtime::keyboard::Event as IcedKeyEvent;
 use iced_runtime::keyboard::Modifiers as IcedModifiers;
 use keyboard_types::Modifiers as BaseviewModifiers;
@@ -252,8 +252,8 @@ fn baseview_key_location_to_iced(
 }
 
 fn baseview_to_iced_key(key: keyboard_types::Key) -> iced_runtime::core::keyboard::Key {
-    use iced_runtime::core::keyboard::key::Named as IN;
     use iced_runtime::core::keyboard::Key as IKey;
+    use iced_runtime::core::keyboard::key::Named as IN;
     use keyboard_types::Key as KKey;
 
     match key {

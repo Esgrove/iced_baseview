@@ -4,25 +4,25 @@ use std::{cell::RefCell, pin::Pin, rc::Rc};
 use baseview::{Event, EventStatus, Window, WindowHandler};
 use iced_core::{mouse, theme};
 use iced_program::Program;
+use iced_runtime::Task;
 pub use iced_runtime::core::window::Id;
 use iced_runtime::futures::futures::{
     self,
     channel::mpsc::{self, SendError},
 };
 pub use iced_runtime::window::{close_events, close_requests, events, open_events, resize_events};
-use iced_runtime::Task;
 use iced_widget::core::Size;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-#[cfg(feature = "nih_log")]
-use nih_plug::log::error;
+#[cfg(feature = "nice-log")]
+use nice_plug_core::nice_error as error;
 
-#[cfg(all(feature = "tracing", not(feature = "nih_log")))]
+#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
 use tracing::error;
 
 use crate::graphics::Compositor;
-use crate::shell::conversion::WindowWrapper;
 use crate::shell::RuntimeEvent;
+use crate::shell::conversion::WindowWrapper;
 
 pub(super) mod state;
 
@@ -80,7 +80,11 @@ where
                     window.focus();
                 }
                 WindowCommand::SetCursorIcon(cursor) => {
+                    #[cfg(not(target_os = "macos"))]
                     window.set_mouse_cursor(cursor);
+
+                    #[cfg(target_os = "macos")]
+                    let _ = cursor;
                 }
             }
         }
@@ -121,6 +125,17 @@ impl<P: Program + 'static> WindowHandler for IcedWindowHandler<P> {
     fn on_event(&mut self, window: &mut Window<'_>, event: Event) -> EventStatus {
         if self.processed_close_signal {
             return EventStatus::Ignored;
+        }
+
+        // Parent/embedded windows do not always gain keyboard focus
+        // Automatically on click. Request focus explicitly before forwarding the event.
+        #[cfg(not(target_os = "linux"))]
+        if matches!(
+            event,
+            Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
+        ) && !window.has_focus()
+        {
+            window.focus();
         }
 
         let status = if requests_exit(&event) {
@@ -175,8 +190,8 @@ pub fn gain_focus<T>() -> Task<T> {
     iced_runtime::window::gain_focus(Id::unique())
 }
 
-/// Returns true if the provided event should cause an [`Application`] to
-/// exit.
+/// Returns true if the provided event should cause an
+/// [`Application`](crate::application::Application) to exit.
 pub fn requests_exit(event: &baseview::Event) -> bool {
     match event {
         baseview::Event::Window(baseview::WindowEvent::WillClose) => true,

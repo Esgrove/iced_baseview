@@ -135,7 +135,7 @@ where
 pub trait UpdateFn<State, Message> {
     /// Processes the message and updates the state of the [`Application`].
     fn update(&self, state: &mut State, message: Message, now: Instant)
-        -> impl Into<Task<Message>>;
+    -> impl Into<Task<Message>>;
 }
 
 impl<State, Message> UpdateFn<State, Message> for () {

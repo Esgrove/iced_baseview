@@ -1,39 +1,16 @@
 # iced_baseview
 
-![Test](https://github.com/BillyDM/iced_baseview/workflows/Rust/badge.svg)
-[![License](https://img.shields.io/crates/l/iced_baseview.svg)](https://codeberg.org/BillyDM/iced_baseview/src/branch/main/LICENSE)
+[![Documentation](https://docs.rs/iced_baseview/badge.svg)](https://docs.rs/iced_baseview)
+[![Crates.io](https://img.shields.io/crates/v/iced_baseview.svg)](https://crates.io/crates/iced_baseview)
+[![License](https://img.shields.io/crates/l/iced_baseview.svg)](https://codeberg.org/RustAudio/iced_baseview/src/branch/main/LICENSE-APACHE)
 
-> This project has moved to a new hard fork of NIH-plug for easier maintanence: https://codeberg.org/BillyDM/nih-plug
+A [`baseview`](https://github.com/RustAudio/baseview) backend for [`Iced`](https://iced.rs/)
 
-A [`baseview`](https://github.com/RustAudio/baseview) backend for [`Iced`](https://github.com/hecrj/iced). This also contains an adapter for [`NIH-plug`](https://github.com/robbert-vdh/nih-plug) (WIP).
+This is used by the [nice-plug](https://codeberg.org/RustAudio/nice-plug) framework, but it can also be used in your own custom audio plugin framework (i.e. with [clack-plugin](https://crates.io/crates/clack-plugin)).
 
 <div align="center">
     <img src="screenshot.png">
 </div>
-
-The [main branch](https://codeberg.org/BillyDM/iced_baseview/src/branch/main) of this repository tracks the latest crates.io release of iced, while [iced_git  branch](https://codeberg.org/BillyDM/iced_baseview/src/branch/iced_git) (WIP) tracks its git repository.
-
-## How to use with custom plugin framework
-
-*TODO*
-
-## How to use with NIH-plug
-
-Add the following to your `Cargo.toml` (in place of `nih_plug_vizia`):
-
-```toml
-nih_plug_iced = { git = "https://codeberg.org/BillyDM/iced_baseview", branch = "main" }
-# Important: `wgpu` is extremely spammy with its logs, so disable it by adding these crates:
-log = { version = "0.4", features = ["max_level_info"] }
-tracing = { version = "0.1.44", default-features = true, features = ["max_level_info"] }
-```
-
-See the `nih_plug_gain_iced` example for how to hook up `iced` to your plugin.
-
-To build the `nih_plug_gain_iced` example, run:
-```
-cargo xtask bundle nih_plug_gain_iced --release
-```
 
 ## Prerequisites
 
@@ -44,3 +21,12 @@ Install dependencies, e.g.,
 ```sh
 sudo apt-get install libx11-dev libxcursor-dev libxcb-dri2-0-dev libxcb-icccm4-dev libx11-xcb-dev mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev
 ```
+
+## License
+
+Licensed under either of
+
+* Apache License, Version 2.0, (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0), or
+* MIT license (LICENSE-MIT or http://opensource.org/licenses/MIT)
+
+at your option.

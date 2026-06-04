@@ -8,7 +8,7 @@ pub struct IcedBaseviewSettings {
     // /// If provided, this identifier may be used to identify the application or
     // /// communicate with it through the windowing system.
     // pub id: Option<String>,
-    /// The [`Window`] settings.
+    /// The window settings.
     pub window: WindowOpenOptions,
 
     /// Ignore key inputs, except for modifier keys such as SHIFT and ALT
@@ -25,10 +25,12 @@ pub struct IcedBaseviewSettings {
 impl Default for IcedBaseviewSettings {
     fn default() -> Self {
         Self {
+            #[allow(clippy::needless_update)]
             window: WindowOpenOptions {
                 title: String::from("iced_baseview"),
                 size: Size::new(500.0, 300.0),
                 scale: WindowScalePolicy::SystemScaleFactor,
+                ..Default::default()
             },
             ignore_non_modifier_keys: false,
             always_redraw: false,
@@ -39,10 +41,12 @@ impl Default for IcedBaseviewSettings {
 impl Clone for IcedBaseviewSettings {
     fn clone(&self) -> Self {
         Self {
+            #[allow(clippy::needless_update)]
             window: WindowOpenOptions {
                 title: self.window.title.clone(),
                 size: self.window.size,
                 scale: self.window.scale,
+                ..Default::default()
             },
             ignore_non_modifier_keys: self.ignore_non_modifier_keys,
             always_redraw: self.always_redraw,

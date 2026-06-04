@@ -3,9 +3,9 @@
 use crate::core::clipboard::Kind;
 use raw_window_handle_06::HasDisplayHandle;
 
-#[cfg(feature = "nih_log")]
-use nih_plug::log::warn;
-#[cfg(all(feature = "tracing", not(feature = "nih_log")))]
+#[cfg(feature = "nice-log")]
+use nice_plug_core::nice_warn as warn;
+#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
 use tracing::warn;
 
 /// A buffer for short-term storage and transfer within and between
@@ -24,7 +24,8 @@ enum State {
 impl Clipboard {
     /// Creates a new [`Clipboard`] for the given window.
     ///
-    /// # SAFETY: The window handle must outlive this struct.
+    /// # Safety
+    /// The window handle must outlive this struct.
     pub unsafe fn connect<W: HasDisplayHandle>(window: &W) -> Clipboard {
         let clipboard = unsafe { window_clipboard::Clipboard::connect(window) };
 

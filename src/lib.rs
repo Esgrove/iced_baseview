@@ -5,9 +5,8 @@
     feature = "smol"
 )))]
 compile_error!(
-    "No futures executor has been enabled! You must enable an \
-    executor feature.\n\
-    Available options: thread-pool, tokio, or smol."
+    "No futures executor has been enabled! You must enable an executor feature.\nAvailable \
+     options: thread-pool, tokio, or smol."
 );
 
 #[cfg(all(
@@ -17,9 +16,8 @@ compile_error!(
     not(feature = "x11"),
 ))]
 compile_error!(
-    "No Unix display server backend has been enabled. You must enable a \
-    display server feature.\n\
-    Available options: x11, wayland."
+    "No Unix display server backend has been enabled. You must enable a display server \
+     feature.\nAvailable options: x11, wayland."
 );
 
 pub use baseview;
@@ -57,23 +55,23 @@ pub use crate::core::gradient;
 pub use crate::core::padding;
 pub use crate::core::theme;
 pub use crate::core::{
-    never, Alignment, Animation, Background, Border, Color, ContentFit, Degrees, Function,
-    Gradient, Length, Never, Padding, Pixels, Point, Radians, Rectangle, Rotation, Settings,
-    Shadow, Size, Theme, Transformation, Vector,
+    Alignment, Animation, Background, Border, Color, ContentFit, Degrees, Function, Gradient,
+    Length, Never, Padding, Pixels, Point, Radians, Rectangle, Rotation, Settings, Shadow, Size,
+    Theme, Transformation, Vector, never,
 };
-pub use crate::program::message;
 pub use crate::program::Preset;
+pub use crate::program::message;
 pub use crate::runtime::exit;
 pub use iced_futures::Subscription;
 
-pub use alignment::Horizontal::{Left, Right};
-pub use alignment::Vertical::{Bottom, Top};
 pub use Alignment::Center;
 pub use Length::{Fill, FillPortion, Shrink};
+pub use alignment::Horizontal::{Left, Right};
+pub use alignment::Vertical::{Bottom, Top};
 
 pub mod debug {
     //! Debug your applications.
-    pub use iced_debug::{time, time_with, Span};
+    pub use iced_debug::{Span, time, time_with};
 }
 
 pub mod task {
@@ -81,7 +79,7 @@ pub mod task {
     pub use crate::runtime::task::{Handle, Task};
 
     #[cfg(feature = "sipper")]
-    pub use crate::runtime::task::{sipper, stream, Never, Sipper, Straw};
+    pub use crate::runtime::task::{Never, Sipper, Straw, sipper, stream};
 }
 
 pub mod clipboard {
@@ -91,8 +89,8 @@ pub mod clipboard {
 
 pub mod executor {
     //! Choose your preferred executor to power your application.
-    pub use iced_futures::backend::default::Executor as Default;
     pub use iced_futures::Executor;
+    pub use iced_futures::backend::default::Executor as Default;
 }
 
 pub mod font {
@@ -122,7 +120,7 @@ pub mod mouse {
 #[cfg(feature = "sysinfo")]
 pub mod system {
     //! Retrieve system information.
-    pub use crate::runtime::system::{information, Information};
+    pub use crate::runtime::system::{Information, information};
 }
 
 pub mod overlay {
@@ -153,7 +151,7 @@ pub mod widget {
     #[cfg(feature = "image")]
     pub mod image {
         //! Images display raster graphics in different formats (PNG, JPG, etc.).
-        pub use iced_runtime::image::{allocate, Allocation, Error};
+        pub use iced_runtime::image::{Allocation, Error, allocate};
         pub use iced_widget::image::*;
     }
 
@@ -178,7 +176,7 @@ pub use font::Font;
 pub use program::Program;
 pub use renderer::Renderer;
 pub use shell::{
-    open_blocking, open_parented, poll_events, settings::IcedBaseviewSettings, PollSubNotifier,
+    PollSubNotifier, open_blocking, open_parented, poll_events, settings::IcedBaseviewSettings,
 };
 pub use task::Task;
 pub use window::Window;

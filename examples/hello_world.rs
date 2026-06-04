@@ -1,8 +1,7 @@
 use iced_baseview::{
-    application,
-    baseview::{Size, WindowOpenOptions, WindowScalePolicy},
+    Alignment, IcedBaseviewSettings, Length, PollSubNotifier, Theme, application,
+    baseview::{Size, WindowOpenOptions},
     widget::{Column, Container, Text},
-    Alignment, IcedBaseviewSettings, Length, PollSubNotifier, Theme,
 };
 
 fn main() {
@@ -18,7 +17,7 @@ fn main() {
             window: WindowOpenOptions {
                 title: String::from("iced_baseview hello world"),
                 size: Size::new(500.0, 300.0),
-                scale: WindowScalePolicy::SystemScaleFactor,
+                ..Default::default()
             },
             ..Default::default()
         },

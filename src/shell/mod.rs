@@ -1,28 +1,28 @@
 use baseview::{EventStatus, WindowOpenOptions};
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
-use iced_core::{mouse, renderer, theme, Point, Size};
-use iced_futures::futures::{task, StreamExt};
-use iced_futures::{futures::channel::mpsc, subscription, Runtime};
+use iced_core::{Point, Size, mouse, renderer, theme};
+use iced_futures::futures::{StreamExt, task};
 use iced_futures::{Executor, Subscription};
+use iced_futures::{Runtime, futures::channel::mpsc, subscription};
 use iced_program::Program;
-use iced_runtime::{user_interface, Action, UserInterface};
+use iced_runtime::{Action, UserInterface, user_interface};
 use iced_widget::graphics::Viewport;
 use raw_window_handle::HasRawWindowHandle;
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
-#[cfg(feature = "nih_log")]
-use nih_plug::log::{debug, error, warn};
+#[cfg(feature = "nice-log")]
+use nice_plug_core::{nice_dbg as debug, nice_error as error, nice_warn as warn};
 
-#[cfg(all(feature = "tracing", not(feature = "nih_log")))]
+#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
 use tracing::{debug, error, warn};
 
-use crate::graphics::{compositor, Compositor};
 use crate::Error;
+use crate::graphics::{Compositor, compositor};
 
 mod proxy;
 
@@ -37,8 +37,8 @@ pub mod window;
 use clipboard::Clipboard;
 use settings::IcedBaseviewSettings;
 use window::{
-    state::State as WindowState, IcedWindowHandler, InstanceWindow, WindowCommand, WindowHandle,
-    WindowQueue,
+    IcedWindowHandler, InstanceWindow, WindowCommand, WindowHandle, WindowQueue,
+    state::State as WindowState,
 };
 
 pub use proxy::Proxy;
@@ -95,10 +95,10 @@ pub fn poll_events() -> Subscription<()> {
 ///
 /// * `settings` - The settings of the window.
 /// * `notifier` - An atomic flag used to notify the program when it should
-/// poll for new updates and redraw (i.e. as a result of the host updating parameters
-/// or the audio thread updating the state of meters). This flag is polled every frame
-/// right before drawing. If the flag is set then the [`poll_events`] subscription
-/// will be called.
+///   poll for new updates and redraw (i.e. as a result of the host updating parameters
+///   or the audio thread updating the state of meters). This flag is polled every frame
+///   right before drawing. If the flag is set then the [`poll_events`] subscription
+///   will be called.
 /// * `build_program` - The function which builds the Iced program.
 pub fn open_blocking<P, B>(
     settings: IcedBaseviewSettings,
@@ -124,10 +124,10 @@ pub fn open_blocking<P, B>(
 /// * `parent` - The parent window.
 /// * `settings` - The settings of the window.
 /// * `notifier` - An atomic flag used to notify the program when it should
-/// poll for new updates and redraw (i.e. as a result of the host updating parameters
-/// or the audio thread updating the state of meters). This flag is polled every frame
-/// right before drawing. If the flag is set then the [`poll_events`] subscription
-/// will be called.
+///   poll for new updates and redraw (i.e. as a result of the host updating parameters
+///   or the audio thread updating the state of meters). This flag is polled every frame
+///   right before drawing. If the flag is set then the [`poll_events`] subscription
+///   will be called.
 /// * `build_program` - The functio which builds the Iced program.
 pub fn open_parented<W, P, B>(
     parent: &W,
@@ -199,6 +199,7 @@ where
         let proxy = proxy.clone();
 
         iced_debug::on_hotpatch(move || {
+            #[allow(clippy::let_unit_value)]
             let _ = proxy.send_action(Action::Reload);
         });
     }
@@ -273,7 +274,7 @@ where
     };
 
     let instance = Box::pin({
-        let run_instance = run_instance(
+        run_instance(
             program,
             runtime,
             proxy,
@@ -282,8 +283,7 @@ where
             clipboard,
             Rc::clone(&event_status),
             notifier,
-        );
-        run_instance
+        )
     });
 
     let runtime_context = task::Context::from_waker(task::noop_waker_ref());
@@ -301,6 +301,7 @@ where
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_instance<P>(
     mut program: iced_program::Instance<P>,
     mut runtime: Runtime<P::Executor, Proxy<P::Message>, Action<P::Message>>,
@@ -438,7 +439,7 @@ async fn run_instance<P>(
                     }
                 }
 
-                for (event, status) in window_events.into_iter().zip(statuses.into_iter()) {
+                for (event, status) in window_events.into_iter().zip(statuses) {
                     runtime.broadcast(subscription::Event::Interaction {
                         window: window.id,
                         event,
@@ -486,11 +487,11 @@ async fn run_instance<P>(
 
                 // -- Draw --------------------------------------------------------------------
 
-                if let Some(redraw_at) = window.redraw_at {
-                    if redraw_at <= Instant::now() {
-                        window.redraw_requested = true;
-                        window.redraw_at = None;
-                    }
+                if let Some(redraw_at) = window.redraw_at
+                    && redraw_at <= Instant::now()
+                {
+                    window.redraw_requested = true;
+                    window.redraw_at = None;
                 }
 
                 if window.surface_version != window.state.surface_version() {
@@ -552,8 +553,8 @@ async fn run_instance<P>(
 
                     if redraw_count >= 2 {
                         warn!(
-                            "More than 3 consecutive RedrawRequested events \
-                            produced layout invalidation"
+                            "More than 3 consecutive RedrawRequested events produced layout \
+                             invalidation"
                         );
 
                         break state;
@@ -700,10 +701,7 @@ async fn run_instance<P>(
                         _ => {
                             present_span.finish();
 
-                            error!(
-                                "Error {error:?} when \
-                                presenting surface."
-                            );
+                            error!("Error {error:?} when presenting surface.");
 
                             // Try rendering all windows again next frame.
                             window.redraw_requested = true;
@@ -867,6 +865,7 @@ fn log_unsupported_window_action(command: &str) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_action<'a, P>(
     action: Action<P::Message>,
     program: &'a iced_program::Instance<P>,
@@ -1078,7 +1077,7 @@ fn run_action<'a, P>(
             };
 
             *user_interface = Some(build_user_interface(
-                &program,
+                program,
                 cached_interface,
                 &mut window.renderer,
                 window.state.logical_size(),
@@ -1102,8 +1101,11 @@ pub(crate) enum RuntimeEvent<Message: 'static + Send> {
 }
 
 fn clone_window_options(window: &WindowOpenOptions) -> WindowOpenOptions {
+    #[allow(clippy::needless_update)]
     WindowOpenOptions {
         title: window.title.clone(),
-        ..*window
+        size: window.size,
+        scale: window.scale,
+        ..Default::default()
     }
 }

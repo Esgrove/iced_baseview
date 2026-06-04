@@ -1,8 +1,7 @@
 use iced_baseview::{
-    application,
+    Center, Fill, Font, IcedBaseviewSettings, Pixels, PollSubNotifier, Task, Theme, application,
     baseview::{Size, WindowOpenOptions, WindowScalePolicy},
-    widget::{checkbox, column, text, text_input, Column},
-    Center, Fill, Font, IcedBaseviewSettings, Pixels, PollSubNotifier, Task, Theme,
+    widget::{Column, checkbox, column, text, text_input},
 };
 
 fn main() {
@@ -19,6 +18,7 @@ fn main() {
                 title: String::from("iced_baseview text input"),
                 size: Size::new(500.0, 500.0),
                 scale: WindowScalePolicy::SystemScaleFactor,
+                ..Default::default()
             },
             ..Default::default()
         },
@@ -102,8 +102,8 @@ impl MyProgram {
                     .on_toggle(Message::ToggleTextInputIcon),
             )
             .push(
-                "A text input produces a message every time it changes. It is \
-                 very easy to keep track of its contents:",
+                "A text input produces a message every time it changes. It is very easy to keep \
+                 track of its contents:",
             )
             .push(
                 text(if value.is_empty() {
