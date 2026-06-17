@@ -80,11 +80,7 @@ where
                     window.focus();
                 }
                 WindowCommand::SetCursorIcon(cursor) => {
-                    #[cfg(not(target_os = "macos"))]
                     window.set_mouse_cursor(cursor);
-
-                    #[cfg(target_os = "macos")]
-                    let _ = cursor;
                 }
             }
         }
@@ -129,7 +125,6 @@ impl<P: Program + 'static> WindowHandler for IcedWindowHandler<P> {
 
         // Parent/embedded windows do not always gain keyboard focus
         // Automatically on click. Request focus explicitly before forwarding the event.
-        #[cfg(not(target_os = "linux"))]
         if matches!(
             event,
             Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
