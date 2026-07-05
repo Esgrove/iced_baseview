@@ -96,16 +96,15 @@ sipper = ["iced_runtime/sipper"]
 x11 = ["iced_renderer/x11", "window_clipboard/x11"]
 
 [dependencies]
-iced_debug = { path = "../iced/debug" }
-iced_program = { path = "../iced/program" }
-iced_renderer = { path = "../iced/renderer" }
-iced_widget = { path = "../iced/widget" }
-iced_devtools = { path = "../iced/devtools", optional = true }
-iced_futures = { path = "../iced/futures" }
-iced_core = { path = "../iced/core" }
-iced_runtime = { path = "../iced/runtime" }
-iced_wgpu = { path = "../iced/wgpu" }
-iced_highlighter = { path = "../iced/highlighter", optional = true }
+iced_debug = "0.14"
+iced_program = "0.14"
+iced_renderer = "0.14"
+iced_widget = "0.14"
+iced_devtools = { version = "0.14", optional = true }
+iced_futures = "0.14"
+iced_core = "0.14"
+iced_runtime = "0.14"
+iced_highlighter = { version = "0.14", optional = true }
 window_clipboard = { version = "0.5", default-features = false }
 sysinfo = { version = "0.38", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
