@@ -96,22 +96,22 @@ sipper = ["iced_runtime/sipper"]
 x11 = ["iced_renderer/x11", "window_clipboard/x11"]
 
 [dependencies]
-iced_debug = "0.14"
-iced_program = "0.14"
-iced_renderer = "0.14"
-iced_widget = "0.14"
-iced_devtools = { version = "0.14", optional = true }
-iced_futures = "0.14"
-iced_core = "0.14"
-iced_runtime = "0.14"
-iced_highlighter = { version = "0.14", optional = true }
+iced_debug = { path = "../iced/debug" }
+iced_program = { path = "../iced/program" }
+iced_renderer = { path = "../iced/renderer" }
+iced_widget = { path = "../iced/widget" }
+iced_devtools = { path = "../iced/devtools", optional = true }
+iced_futures = { path = "../iced/futures" }
+iced_core = { path = "../iced/core" }
+iced_runtime = { path = "../iced/runtime" }
+iced_wgpu = { path = "../iced/wgpu" }
+iced_highlighter = { path = "../iced/highlighter", optional = true }
 window_clipboard = { version = "0.5", default-features = false }
 sysinfo = { version = "0.38", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
-keyboard-types = { version = "0.6", default-features = false }
-baseview = "0.1.4"
-raw-window-handle = "0.5"
-raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
+keyboard-types = { version = "0.8.3", default-features = false }
+baseview = "0.2"
+raw-window-handle = "0.6"
 thiserror = "2"
 tracing = { version = "0.1", optional = true }
 nice-plug-core = { version = "0.1.3", optional = true }

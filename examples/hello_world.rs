@@ -1,6 +1,6 @@
 use iced_baseview::{
     Alignment, IcedBaseviewSettings, Length, PollSubNotifier, Theme, application,
-    baseview::{Size, WindowOpenOptions},
+    baseview::dpi::LogicalSize,
     widget::{Column, Container, Text},
 };
 
@@ -13,14 +13,9 @@ fn main() {
     .unwrap();
 
     iced_baseview::open_blocking(
-        IcedBaseviewSettings {
-            window: WindowOpenOptions {
-                title: String::from("iced_baseview hello world"),
-                size: Size::new(500.0, 300.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
+        IcedBaseviewSettings::new()
+            .with_title("iced_baseview hello world")
+            .with_size(LogicalSize::new(500.0, 300.0)),
         PollSubNotifier::new(),
         || {
             application(MyProgram::default, MyProgram::update, MyProgram::view)

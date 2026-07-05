@@ -1,4 +1,4 @@
-use baseview::{EventStatus, WindowOpenOptions};
+use baseview::{EventStatus, WindowContext};
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
 use iced_core::{Point, Size, mouse, renderer, theme};
@@ -8,7 +8,7 @@ use iced_futures::{Runtime, futures::channel::mpsc, subscription};
 use iced_program::Program;
 use iced_runtime::{Action, UserInterface, user_interface};
 use iced_widget::graphics::Viewport;
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,7 +37,7 @@ pub mod window;
 use clipboard::Clipboard;
 use settings::IcedBaseviewSettings;
 use window::{
-    IcedWindowHandler, InstanceWindow, WindowCommand, WindowHandle, WindowQueue,
+    IcedWindowContext, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue,
     state::State as WindowState,
 };
 
@@ -111,8 +111,8 @@ pub fn open_blocking<P, B>(
     let (sender, receiver) = mpsc::unbounded();
 
     baseview::Window::open_blocking(
-        clone_window_options(&settings.window),
-        move |window: &mut baseview::Window<'_>| -> IcedWindowHandler<P> {
+        settings.window.clone(),
+        move |window: WindowContext| -> IcedWindowHandler<P::Message> {
             let program = (build_program)();
             run_inner(window, settings, program, sender, receiver, notifier).expect("Launch window")
         },
@@ -134,9 +134,9 @@ pub fn open_parented<W, P, B>(
     settings: IcedBaseviewSettings,
     notifier: PollSubNotifier,
     build_program: B,
-) -> WindowHandle<P::Message>
+) -> IcedWindowContext<P::Message>
 where
-    W: HasRawWindowHandle,
+    W: HasWindowHandle,
     P: Program + 'static,
     B: Send + 'static + FnOnce() -> P,
 {
@@ -145,26 +145,26 @@ where
 
     let bv_handle = baseview::Window::open_parented(
         parent,
-        clone_window_options(&settings.window),
-        move |window: &mut baseview::Window<'_>| -> IcedWindowHandler<P> {
+        settings.window.clone(),
+        move |window: WindowContext| -> IcedWindowHandler<P::Message> {
             let program = (build_program)();
             run_inner(window, settings, program, sender_clone, receiver, notifier)
                 .expect("Launch window")
         },
     );
 
-    WindowHandle::new(bv_handle, sender)
+    IcedWindowContext::new(bv_handle, sender)
 }
 
 /// Runs a [`Program`] with the provided settings.
 fn run_inner<P>(
-    window: &mut baseview::Window<'_>,
+    window: WindowContext,
     settings: IcedBaseviewSettings,
     program: P,
-    event_sender: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
-    event_receiver: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
+    runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
+    runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
     notifier: PollSubNotifier,
-) -> Result<IcedWindowHandler<P>, Error>
+) -> Result<IcedWindowHandler<P::Message>, Error>
 where
     P: Program + 'static,
     P::Theme: theme::Base,
@@ -173,10 +173,9 @@ where
     let program_settings = program.settings();
     let graphics_settings: iced_widget::graphics::Settings = program_settings.clone().into();
 
-    let (runtime_tx, runtime_rx) = mpsc::unbounded::<Action<P::Message>>();
+    let (action_tx, action_rx) = mpsc::unbounded::<Action<P::Message>>();
 
-    // Assume scale for now until there is an event with a new one.
-    let window_scale_factor = 1.0;
+    let window_scale_factor = window.scale_factor();
 
     let viewport = {
         let scale = match settings.window.scale {
@@ -184,15 +183,18 @@ where
             baseview::WindowScalePolicy::SystemScaleFactor => window_scale_factor,
         };
 
-        let physical_size = Size::new(
-            (settings.window.size.width * scale) as u32,
-            (settings.window.size.height * scale) as u32,
-        );
+        let physical_size = settings.window.size.to_physical(scale);
 
-        Viewport::with_physical_size(physical_size, scale as f32)
+        Viewport::with_physical_size(
+            Size {
+                width: physical_size.width,
+                height: physical_size.height,
+            },
+            scale as f32,
+        )
     };
 
-    let proxy = Proxy::new(runtime_tx);
+    let proxy = Proxy::new(action_tx);
 
     #[cfg(feature = "debug")]
     {
@@ -220,16 +222,22 @@ where
         runtime.enter(|| program.subscription().map(Action::Output)),
     ));
 
-    let window06 = crate::shell::conversion::convert_window(window);
+    // This works
+    //let handle = WindowWrapper::new(&window);
+
+    // This doesn't work
+    let handle = window.platform_handle();
+
     let mut compositor =
         crate::futures::executor::block_on(<P::Renderer as compositor::Default>::Compositor::new(
             graphics_settings,
-            window06.clone(),
-            window06.clone(),
+            handle.clone(),
+            handle.clone(),
             crate::graphics::Shell::new(proxy.clone()),
         ))?;
+
     let surface = compositor.create_surface(
-        window06.clone(),
+        handle.clone(),
         viewport.physical_size().width,
         viewport.physical_size().height,
     );
@@ -239,12 +247,12 @@ where
         compositor.load_font(font);
     }
 
-    let (window_queue, window_queue_rx) = WindowQueue::new();
+    let (window_commands_tx, window_commands_rx) = WindowQueue::new();
     let event_status = Rc::new(RefCell::new(baseview::EventStatus::Ignored));
 
     let window_id = iced_core::window::Id::unique();
 
-    let clipboard = unsafe { Clipboard::connect(&window06) };
+    let clipboard = unsafe { Clipboard::connect(&window) };
 
     let state = WindowState::new(
         &program,
@@ -264,8 +272,8 @@ where
         compositor,
         renderer,
         //preedit: None,
-        queue: window_queue,
-        window06,
+        queue: window_commands_tx,
+        window: window.clone(),
         id: window_id,
         always_redraw: settings.always_redraw,
         ignore_non_modifier_keys: settings.ignore_non_modifier_keys,
@@ -279,7 +287,7 @@ where
             runtime,
             proxy,
             instance_window,
-            event_receiver,
+            runtime_event_rx,
             clipboard,
             Rc::clone(&event_status),
             notifier,
@@ -290,15 +298,15 @@ where
 
     boot_span.finish();
 
-    Ok(IcedWindowHandler {
-        sender: event_sender,
+    Ok(IcedWindowHandler::new(
+        window,
         instance,
         runtime_context,
-        runtime_rx,
-        window_queue_rx,
         event_status,
-        processed_close_signal: false,
-    })
+        window_commands_rx,
+        runtime_event_tx,
+        action_rx,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -307,7 +315,7 @@ async fn run_instance<P>(
     mut runtime: Runtime<P::Executor, Proxy<P::Message>, Action<P::Message>>,
     proxy: Proxy<P::Message>,
     mut window: InstanceWindow<P, <P::Renderer as compositor::Default>::Compositor>,
-    mut event_receiver: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
+    mut runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
     mut clipboard: Clipboard,
     event_status: Rc<RefCell<baseview::EventStatus>>,
     notifier: PollSubNotifier,
@@ -341,10 +349,10 @@ async fn run_instance<P>(
 
     'next_event: loop {
         // Empty the queue if possible
-        let event = if let Ok(event) = event_receiver.try_recv() {
+        let event = if let Ok(event) = runtime_event_rx.try_recv() {
             Some(event)
         } else {
-            event_receiver.next().await
+            runtime_event_rx.next().await
         };
 
         let Some(event) = event else {
@@ -684,7 +692,7 @@ async fn run_instance<P>(
 
                             if error == compositor::SurfaceError::Lost {
                                 window.surface = window.compositor.create_surface(
-                                    window.window06.clone(),
+                                    window.window.platform_handle(),
                                     physical_size.width,
                                     physical_size.height,
                                 );
@@ -721,6 +729,9 @@ async fn run_instance<P>(
                     &mut system_theme,
                 );
             }
+            RuntimeEvent::UserCloseRequested => {
+                window.window.request_close();
+            }
             RuntimeEvent::Baseview((event, do_send_status)) => {
                 window.state.update(&event);
 
@@ -748,6 +759,9 @@ async fn run_instance<P>(
                 }
 
                 did_process_event = true;
+            }
+            RuntimeEvent::Resized(new_size) => {
+                window.state.resized(new_size);
             }
             RuntimeEvent::WillClose => {
                 run_action(
@@ -983,7 +997,7 @@ fn run_action<'a, P>(
                 log_unsupported_window_action("GetRawId");
             }
             window::Action::Run(_, f) => {
-                (f)(&window.window06);
+                (f)(&window.window);
             }
             window::Action::Screenshot(..) => {
                 log_unsupported_window_action("Screenshot");
@@ -1094,18 +1108,45 @@ fn run_action<'a, P>(
 
 pub(crate) enum RuntimeEvent<Message: 'static + Send> {
     Baseview((baseview::Event, bool)),
+    Resized(baseview::WindowSize),
     UserEvent(iced_runtime::Action<Message>),
     Poll,
     OnFrame,
+    UserCloseRequested,
     WillClose,
 }
 
-fn clone_window_options(window: &WindowOpenOptions) -> WindowOpenOptions {
-    #[allow(clippy::needless_update)]
-    WindowOpenOptions {
-        title: window.title.clone(),
-        size: window.size,
-        scale: window.scale,
-        ..Default::default()
+// For some reason Iced doesn't like `baseview::PlatformHandle`, but likes this struct.
+#[derive(Clone)]
+struct WindowWrapper {
+    window: raw_window_handle::RawWindowHandle,
+    display: raw_window_handle::RawDisplayHandle,
+}
+
+impl WindowWrapper {
+    fn new(window: &baseview::WindowContext) -> Self {
+        Self {
+            window: window.window_handle().unwrap().as_raw(),
+            display: window.display_handle().unwrap().as_raw(),
+        }
     }
 }
+
+impl raw_window_handle::HasWindowHandle for WindowWrapper {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'static>, raw_window_handle::HandleError> {
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(self.window) })
+    }
+}
+
+impl raw_window_handle::HasDisplayHandle for WindowWrapper {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'static>, raw_window_handle::HandleError> {
+        Ok(unsafe { raw_window_handle::DisplayHandle::borrow_raw(self.display) })
+    }
+}
+
+unsafe impl Send for WindowWrapper {}
+unsafe impl Sync for WindowWrapper {}

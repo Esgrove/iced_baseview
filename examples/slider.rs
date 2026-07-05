@@ -1,6 +1,6 @@
 use iced_baseview::{
     Center, Fill, IcedBaseviewSettings, PollSubNotifier, Task, Theme, application,
-    baseview::{Size, WindowOpenOptions},
+    baseview::dpi::LogicalSize,
     widget::{Column, column, container, slider, text, vertical_slider},
 };
 
@@ -13,14 +13,9 @@ fn main() {
     .unwrap();
 
     iced_baseview::open_blocking(
-        IcedBaseviewSettings {
-            window: WindowOpenOptions {
-                title: String::from("iced_baseview slider"),
-                size: Size::new(500.0, 300.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
+        IcedBaseviewSettings::new()
+            .with_title("iced_baseview slider")
+            .with_size(LogicalSize::new(500.0, 300.0)),
         PollSubNotifier::new(),
         || {
             application(MyProgram::default, MyProgram::update, MyProgram::view)

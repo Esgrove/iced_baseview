@@ -1,4 +1,4 @@
-use baseview::WindowScalePolicy;
+use baseview::{WindowScalePolicy, WindowSize};
 use iced_core::keyboard::Modifiers;
 use iced_core::theme;
 use iced_program::Program;
@@ -118,28 +118,6 @@ impl<P: Program> State<P> {
     /// accordingly.
     pub fn update(&mut self, event: &baseview::Event) {
         match event {
-            baseview::Event::Window(baseview::WindowEvent::Resized(window_info)) => {
-                self.window_scale_factor = window_info.scale() as f32;
-
-                let scale = match self.scale_policy {
-                    WindowScalePolicy::ScaleFactor(scale) => {
-                        scale as f32 * self.program_scale_factor
-                    }
-                    WindowScalePolicy::SystemScaleFactor => {
-                        self.window_scale_factor * self.program_scale_factor
-                    }
-                };
-
-                self.viewport = Viewport::with_physical_size(
-                    Size::new(
-                        window_info.physical_size().width,
-                        window_info.physical_size().height,
-                    ),
-                    scale,
-                );
-
-                self.surface_version += 1;
-            }
             baseview::Event::Mouse(baseview::MouseEvent::CursorMoved {
                 position,
                 modifiers: _,
@@ -152,19 +130,26 @@ impl<P: Program> State<P> {
             baseview::Event::Mouse(baseview::MouseEvent::CursorLeft) => {
                 self.cursor_position = None;
             }
-            baseview::Event::Keyboard(_event) => {
-                /*
-                #[cfg(feature = "debug")]
-                {
-                    use keyboard_types::{Key, KeyState};
-                    if event.key == Key::F12 && event.state == KeyState::Down {
-                        _debug.toggle();
-                    }
-                }
-                */
-            }
             _ => {}
         }
+    }
+
+    pub fn resized(&mut self, new_size: WindowSize) {
+        self.window_scale_factor = new_size.scale_factor as f32;
+
+        let scale = match self.scale_policy {
+            WindowScalePolicy::ScaleFactor(scale) => scale as f32 * self.program_scale_factor,
+            WindowScalePolicy::SystemScaleFactor => {
+                self.window_scale_factor * self.program_scale_factor
+            }
+        };
+
+        self.viewport = Viewport::with_physical_size(
+            Size::new(new_size.physical.width, new_size.physical.height),
+            scale,
+        );
+
+        self.surface_version += 1;
     }
 
     /// Synchronizes the [`State`] with its [`Program`] and its respective window.
