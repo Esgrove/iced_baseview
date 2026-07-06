@@ -8,7 +8,7 @@ use iced_futures::{Runtime, futures::channel::mpsc, subscription};
 use iced_program::Program;
 use iced_runtime::{Action, UserInterface, user_interface};
 use iced_widget::graphics::Viewport;
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use raw_window_handle::HasWindowHandle;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -222,10 +222,6 @@ where
         runtime.enter(|| program.subscription().map(Action::Output)),
     ));
 
-    // This works
-    //let handle = WindowWrapper::new(&window);
-
-    // This doesn't work
     let handle = window.platform_handle();
 
     let mut compositor =
@@ -258,7 +254,7 @@ where
         &program,
         window_id,
         viewport.physical_size(),
-        window_scale_factor as f32,
+        window_scale_factor,
         settings.window.scale,
         iced_core::theme::Mode::None,
     );
@@ -346,6 +342,7 @@ async fn run_instance<P>(
     // May be triggered when processing baseview events, will cause the UI to be updated in the next
     // frame
     let mut did_process_event = false;
+    let mut scale_factor = window.window.scale_factor();
 
     'next_event: loop {
         // Empty the queue if possible
@@ -733,7 +730,7 @@ async fn run_instance<P>(
                 window.window.request_close();
             }
             RuntimeEvent::Baseview((event, do_send_status)) => {
-                window.state.update(&event);
+                window.state.update_cursor_position(&event);
 
                 match &event {
                     baseview::Event::Window(baseview::WindowEvent::Focused)
@@ -762,6 +759,27 @@ async fn run_instance<P>(
             }
             RuntimeEvent::Resized(new_size) => {
                 window.state.resized(new_size);
+
+                if scale_factor != new_size.scale_factor {
+                    scale_factor = new_size.scale_factor;
+
+                    events.push((
+                        window.id,
+                        iced_core::Event::Window(iced_core::window::Event::Rescaled(
+                            new_size.scale_factor as f32,
+                        )),
+                    ));
+                }
+
+                events.push((
+                    window.id,
+                    iced_core::Event::Window(iced_core::window::Event::Resized(Size {
+                        width: new_size.logical.width as f32,
+                        height: new_size.logical.height as f32,
+                    })),
+                ));
+
+                window.redraw_requested = true;
             }
             RuntimeEvent::WillClose => {
                 run_action(
@@ -1115,38 +1133,3 @@ pub(crate) enum RuntimeEvent<Message: 'static + Send> {
     UserCloseRequested,
     WillClose,
 }
-
-// For some reason Iced doesn't like `baseview::PlatformHandle`, but likes this struct.
-#[derive(Clone)]
-struct WindowWrapper {
-    window: raw_window_handle::RawWindowHandle,
-    display: raw_window_handle::RawDisplayHandle,
-}
-
-impl WindowWrapper {
-    fn new(window: &baseview::WindowContext) -> Self {
-        Self {
-            window: window.window_handle().unwrap().as_raw(),
-            display: window.display_handle().unwrap().as_raw(),
-        }
-    }
-}
-
-impl raw_window_handle::HasWindowHandle for WindowWrapper {
-    fn window_handle(
-        &self,
-    ) -> Result<raw_window_handle::WindowHandle<'static>, raw_window_handle::HandleError> {
-        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(self.window) })
-    }
-}
-
-impl raw_window_handle::HasDisplayHandle for WindowWrapper {
-    fn display_handle(
-        &self,
-    ) -> Result<raw_window_handle::DisplayHandle<'static>, raw_window_handle::HandleError> {
-        Ok(unsafe { raw_window_handle::DisplayHandle::borrow_raw(self.display) })
-    }
-}
-
-unsafe impl Send for WindowWrapper {}
-unsafe impl Sync for WindowWrapper {}

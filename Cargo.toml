@@ -109,7 +109,7 @@ window_clipboard = { version = "0.5", default-features = false }
 sysinfo = { version = "0.38", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 keyboard-types = { version = "0.8.3", default-features = false }
-baseview = "0.2"
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "09c56bd7bb5758175220ac3bfa9217fc6fd21bdd" }
 raw-window-handle = "0.6"
 thiserror = "2"
 tracing = { version = "0.1", optional = true }
