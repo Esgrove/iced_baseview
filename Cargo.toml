@@ -1,6 +1,6 @@
 [package]
 name = "iced_baseview"
-version = "0.2.5"
+version = "0.3.0"
 authors = [
   "Billy Messenger <BillyDM@protonmail.com>",
   "Joakim Frostegård <joakim.frostegard@gmail.com>",
@@ -106,12 +106,11 @@ iced_core = "0.14"
 iced_runtime = "0.14"
 iced_highlighter = { version = "0.14", optional = true }
 window_clipboard = { version = "0.5", default-features = false }
-sysinfo = { version = "0.38", optional = true }
+sysinfo = { version = "0.39.6", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
-keyboard-types = { version = "0.6", default-features = false }
-baseview = "0.1.4"
-raw-window-handle = "0.5"
-raw-window-handle-06 = { package = "raw-window-handle", version = "0.6" }
+keyboard-types = { version = "0.8.3", default-features = false }
+baseview = "0.2.1"
+raw-window-handle = "0.6"
 thiserror = "2"
 tracing = { version = "0.1", optional = true }
 nice-plug-core = { version = "0.1.3", optional = true }

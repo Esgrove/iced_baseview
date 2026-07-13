@@ -1,6 +1,6 @@
 use iced_baseview::{
     Center, Fill, Font, IcedBaseviewSettings, Pixels, PollSubNotifier, Task, Theme, application,
-    baseview::{Size, WindowOpenOptions, WindowScalePolicy},
+    baseview::dpi::LogicalSize,
     widget::{Column, checkbox, column, text, text_input},
 };
 
@@ -13,15 +13,9 @@ fn main() {
     .unwrap();
 
     iced_baseview::open_blocking(
-        IcedBaseviewSettings {
-            window: WindowOpenOptions {
-                title: String::from("iced_baseview text input"),
-                size: Size::new(500.0, 500.0),
-                scale: WindowScalePolicy::SystemScaleFactor,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
+        IcedBaseviewSettings::new()
+            .with_title("iced_baseview text input")
+            .with_size(LogicalSize::new(500.0, 500.0)),
         PollSubNotifier::new(),
         || {
             application(MyProgram::default, MyProgram::update, MyProgram::view)

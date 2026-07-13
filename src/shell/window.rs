@@ -1,7 +1,8 @@
 use std::time::Instant;
 use std::{cell::RefCell, pin::Pin, rc::Rc};
 
-use baseview::{Event, EventStatus, Window, WindowHandler};
+use baseview::dpi::LogicalSize;
+use baseview::{EventStatus, WindowContext, WindowHandler};
 use iced_core::{mouse, theme};
 use iced_program::Program;
 use iced_runtime::Task;
@@ -12,7 +13,6 @@ use iced_runtime::futures::futures::{
 };
 pub use iced_runtime::window::{close_events, close_requests, events, open_events, resize_events};
 use iced_widget::core::Size;
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 #[cfg(feature = "nice-log")]
 use nice_plug_core::nice_error as error;
@@ -22,7 +22,6 @@ use tracing::error;
 
 use crate::graphics::Compositor;
 use crate::shell::RuntimeEvent;
-use crate::shell::conversion::WindowWrapper;
 
 pub(super) mod state;
 
@@ -40,7 +39,7 @@ where
     pub renderer: P::Renderer,
     //pub preedit: Option<Preedit<P::Renderer>>,
     pub queue: WindowQueue,
-    pub window06: WindowWrapper,
+    pub window: WindowContext,
     pub id: iced_core::window::Id,
     #[allow(unused)]
     pub always_redraw: bool,
@@ -50,118 +49,201 @@ where
     //ime_state: Option<(Rectangle, input_method::Purpose)>,
 }
 
-pub(super) struct IcedWindowHandler<P: Program> {
-    pub sender: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
-    pub instance: Pin<Box<dyn futures::Future<Output = ()>>>,
-    pub runtime_context: futures::task::Context<'static>,
-    pub runtime_rx: mpsc::UnboundedReceiver<iced_runtime::Action<P::Message>>,
-    pub window_queue_rx: mpsc::UnboundedReceiver<WindowCommand>,
-    pub event_status: Rc<RefCell<EventStatus>>,
-    pub processed_close_signal: bool,
+pub(super) struct IcedWindowHandler<Message: 'static + Send> {
+    inner: RefCell<IcedWindowHandlerInner<Message>>,
+    window_commands_rx: RefCell<mpsc::UnboundedReceiver<WindowCommand>>,
+    runtime_state: RefCell<RuntimeState>,
+    window: WindowContext,
+    event_status: Rc<RefCell<EventStatus>>,
 }
 
-impl<P> IcedWindowHandler<P>
-where
-    P: Program + 'static,
-{
-    fn drain_window_commands(&mut self, window: &mut Window<'_>) {
-        while let Ok(cmd) = self.window_queue_rx.try_recv() {
+struct IcedWindowHandlerInner<Message: 'static + Send> {
+    runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
+    action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
+    processed_close_signal: bool,
+}
+
+struct RuntimeState {
+    instance: Pin<Box<dyn futures::Future<Output = ()>>>,
+    runtime_context: futures::task::Context<'static>,
+}
+
+impl<Message: 'static + Send> IcedWindowHandler<Message> {
+    pub fn new(
+        window: WindowContext,
+        instance: Pin<Box<dyn futures::Future<Output = ()>>>,
+        runtime_context: futures::task::Context<'static>,
+        event_status: Rc<RefCell<EventStatus>>,
+        window_commands_rx: mpsc::UnboundedReceiver<WindowCommand>,
+        runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
+        action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
+    ) -> Self {
+        Self {
+            inner: RefCell::new(IcedWindowHandlerInner {
+                runtime_event_tx,
+                action_rx,
+                processed_close_signal: false,
+            }),
+            window_commands_rx: RefCell::new(window_commands_rx),
+            runtime_state: RefCell::new(RuntimeState {
+                instance,
+                runtime_context,
+            }),
+            window,
+            event_status,
+        }
+    }
+
+    fn drain_window_commands(&self) {
+        while let Ok(cmd) = { self.window_commands_rx.borrow_mut().try_recv() } {
             match cmd {
                 WindowCommand::CloseWindow => {
-                    window.close();
+                    self.window.request_close();
                 }
                 WindowCommand::ResizeWindow(size) => {
-                    window.resize(baseview::Size {
-                        width: size.width as f64,
-                        height: size.height as f64,
-                    });
+                    self.window
+                        .resize(baseview::dpi::Size::Logical(LogicalSize {
+                            width: size.width as f64,
+                            height: size.height as f64,
+                        }));
                 }
                 WindowCommand::Focus => {
-                    window.focus();
+                    self.window.focus();
                 }
                 WindowCommand::SetCursorIcon(cursor) => {
-                    window.set_mouse_cursor(cursor);
+                    self.window.set_mouse_cursor(cursor);
                 }
             }
         }
     }
+
+    fn poll_runtime(&self) {
+        let mut runtime = self.runtime_state.borrow_mut();
+
+        let RuntimeState {
+            instance,
+            runtime_context,
+        } = &mut *runtime;
+
+        // Flush all messages. This will block until the instance is finished.
+        let _ = instance.as_mut().poll(runtime_context);
+    }
 }
 
-impl<P: Program + 'static> WindowHandler for IcedWindowHandler<P> {
-    fn on_frame(&mut self, window: &mut Window<'_>) {
-        if self.processed_close_signal {
-            return;
+impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
+    fn on_frame(&self) {
+        {
+            let mut inner = self.inner.borrow_mut();
+
+            if inner.processed_close_signal {
+                return;
+            }
+
+            inner
+                .runtime_event_tx
+                .start_send(RuntimeEvent::Poll)
+                .unwrap();
         }
 
-        self.sender
-            .start_send(RuntimeEvent::Poll)
-            .expect("Send event");
-
-        // Flush all messages. This will block until the instance is finished.
-        let _ = self.instance.as_mut().poll(&mut self.runtime_context);
+        self.poll_runtime();
 
         // Poll subscriptions and send the corresponding messages.
-        while let Ok(message) = self.runtime_rx.try_recv() {
-            self.sender
-                .start_send(RuntimeEvent::UserEvent(message))
-                .expect("Send event");
+        {
+            let mut inner = self.inner.borrow_mut();
+
+            while let Ok(message) = inner.action_rx.try_recv() {
+                inner
+                    .runtime_event_tx
+                    .start_send(RuntimeEvent::UserEvent(message))
+                    .unwrap();
+            }
+
+            // Send the event to the instance.
+            inner
+                .runtime_event_tx
+                .start_send(RuntimeEvent::OnFrame)
+                .unwrap();
         }
 
-        // Send the event to the instance.
-        self.sender
-            .start_send(RuntimeEvent::OnFrame)
-            .expect("Send event");
+        self.poll_runtime();
 
-        // Flush all messages. This will block until the instance is finished.
-        let _ = self.instance.as_mut().poll(&mut self.runtime_context);
-
-        self.drain_window_commands(window);
+        self.drain_window_commands();
     }
 
-    fn on_event(&mut self, window: &mut Window<'_>, event: Event) -> EventStatus {
-        if self.processed_close_signal {
-            return EventStatus::Ignored;
-        }
-
+    fn on_event(&self, event: baseview::Event) -> EventStatus {
         // Parent/embedded windows do not always gain keyboard focus
         // Automatically on click. Request focus explicitly before forwarding the event.
+        //
+        // TODO: Check if this is still necessary.
         if matches!(
             event,
-            Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
-        ) && !window.has_focus()
+            baseview::Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
+        ) && !self.window.has_focus()
         {
-            window.focus();
+            self.window.focus();
         }
 
-        let status = if requests_exit(&event) {
-            self.processed_close_signal = true;
+        let ignore_event;
 
-            self.sender
-                .start_send(RuntimeEvent::WillClose)
-                .expect("Send event");
+        {
+            let mut inner = self.inner.borrow_mut();
 
-            // Flush all messages so the application receives the close event. This will block until the instance is finished.
-            let _ = self.instance.as_mut().poll(&mut self.runtime_context);
+            if inner.processed_close_signal {
+                return EventStatus::Ignored;
+            }
 
+            ignore_event = if requests_exit(&event) {
+                inner.processed_close_signal = true;
+
+                inner
+                    .runtime_event_tx
+                    .start_send(RuntimeEvent::WillClose)
+                    .expect("Send event");
+
+                true
+            } else {
+                // Send the event to the instance.
+                inner
+                    .runtime_event_tx
+                    .start_send(RuntimeEvent::Baseview((event, true)))
+                    .expect("Send event");
+
+                false
+            };
+        }
+
+        self.poll_runtime();
+
+        if !self.inner.borrow().processed_close_signal {
+            self.drain_window_commands();
+        }
+
+        if ignore_event {
             EventStatus::Ignored
         } else {
-            // Send the event to the instance.
-            self.sender
-                .start_send(RuntimeEvent::Baseview((event, true)))
-                .expect("Send event");
-
-            // Flush all messages so the application receives the event. This will block until the instance is finished.
-            let _ = self.instance.as_mut().poll(&mut self.runtime_context);
-
-            // TODO: make this Copy
             *self.event_status.borrow()
-        };
+        }
+    }
 
-        if !self.processed_close_signal {
-            self.drain_window_commands(window);
+    fn resized(&self, new_size: baseview::WindowSize) {
+        {
+            let mut inner = self.inner.borrow_mut();
+
+            if inner.processed_close_signal {
+                return;
+            }
+
+            inner
+                .runtime_event_tx
+                .start_send(RuntimeEvent::Resized(new_size))
+                .expect("Send event");
         }
 
-        status
+        self.poll_runtime();
+
+        if !self.inner.borrow().processed_close_signal {
+            self.drain_window_commands();
+        }
     }
 }
 
@@ -207,16 +289,18 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 
 /// Use this to send custom events to the iced window.
 ///
+/// When this struct is dropped, the window will be closed.
+///
 /// Please note this channel is ***not*** realtime-safe and should never be
 /// be used to send events from the audio thread. Use a realtime-safe ring
 /// buffer instead.
 #[allow(missing_debug_implementations)]
-pub struct WindowHandle<Message: 'static + Send> {
+pub struct IcedWindowHandle<Message: 'static + Send> {
     bv_handle: baseview::WindowHandle,
     tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
 }
 
-impl<Message: 'static + Send> WindowHandle<Message> {
+impl<Message: 'static + Send> IcedWindowHandle<Message> {
     pub(crate) fn new(
         bv_handle: baseview::WindowHandle,
         tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
@@ -243,11 +327,6 @@ impl<Message: 'static + Send> WindowHandle<Message> {
             .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
     }
 
-    /// Signal the window to close.
-    pub fn close_window(&mut self) {
-        self.bv_handle.close();
-    }
-
     /// Returns `true` if the window is still open, and `false` if the window
     /// was closed/dropped.
     pub fn is_open(&self) -> bool {
@@ -255,15 +334,10 @@ impl<Message: 'static + Send> WindowHandle<Message> {
     }
 }
 
-impl<Message: 'static + Send> Drop for WindowHandle<Message> {
+impl<Message: 'static + Send> Drop for IcedWindowHandle<Message> {
     fn drop(&mut self) {
-        self.close_window();
-    }
-}
-
-unsafe impl<Message: 'static + Send> HasRawWindowHandle for WindowHandle<Message> {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.bv_handle.raw_window_handle()
+        self.bv_handle.close();
+        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
     }
 }
 
