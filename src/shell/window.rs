@@ -171,17 +171,17 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
     }
 
     fn on_event(&self, event: baseview::Event) -> EventStatus {
-        /*
         // Parent/embedded windows do not always gain keyboard focus
         // Automatically on click. Request focus explicitly before forwarding the event.
+        //
+        // TODO: Check if this is still necessary.
         if matches!(
             event,
-            Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
+            baseview::Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
         ) && !self.window.has_focus()
         {
             self.window.focus();
         }
-        */
 
         let ignore_event;
 
@@ -289,16 +289,18 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 
 /// Use this to send custom events to the iced window.
 ///
+/// When this struct is dropped, the window will be closed.
+///
 /// Please note this channel is ***not*** realtime-safe and should never be
 /// be used to send events from the audio thread. Use a realtime-safe ring
 /// buffer instead.
 #[allow(missing_debug_implementations)]
-pub struct IcedWindowContext<Message: 'static + Send> {
+pub struct IcedWindowHandle<Message: 'static + Send> {
     bv_handle: baseview::WindowHandle,
     tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
 }
 
-impl<Message: 'static + Send> IcedWindowContext<Message> {
+impl<Message: 'static + Send> IcedWindowHandle<Message> {
     pub(crate) fn new(
         bv_handle: baseview::WindowHandle,
         tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
@@ -325,12 +327,6 @@ impl<Message: 'static + Send> IcedWindowContext<Message> {
             .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
     }
 
-    /// Signal the window to close.
-    pub fn close_window(&mut self) -> Result<(), SendError> {
-        //self.bv_handle.close();
-        self.tx.start_send(RuntimeEvent::UserCloseRequested)
-    }
-
     /// Returns `true` if the window is still open, and `false` if the window
     /// was closed/dropped.
     pub fn is_open(&self) -> bool {
@@ -338,21 +334,12 @@ impl<Message: 'static + Send> IcedWindowContext<Message> {
     }
 }
 
-impl<Message: 'static + Send> Drop for IcedWindowContext<Message> {
+impl<Message: 'static + Send> Drop for IcedWindowHandle<Message> {
     fn drop(&mut self) {
-        let _ = self.close_window();
+        self.bv_handle.close();
+        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
     }
 }
-
-/*
-impl<Message: 'static + Send> HasWindowHandle for WindowHandle<Message> {
-    fn window_handle(
-        &self,
-    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
-        self.bv_handle.
-    }
-}
-*/
 
 pub enum WindowCommand {
     CloseWindow,

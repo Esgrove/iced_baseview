@@ -37,7 +37,7 @@ pub mod window;
 use clipboard::Clipboard;
 use settings::IcedBaseviewSettings;
 use window::{
-    IcedWindowContext, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue,
+    IcedWindowHandle, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue,
     state::State as WindowState,
 };
 
@@ -134,7 +134,7 @@ pub fn open_parented<W, P, B>(
     settings: IcedBaseviewSettings,
     notifier: PollSubNotifier,
     build_program: B,
-) -> IcedWindowContext<P::Message>
+) -> IcedWindowHandle<P::Message>
 where
     W: HasWindowHandle,
     P: Program + 'static,
@@ -153,7 +153,7 @@ where
         },
     );
 
-    IcedWindowContext::new(bv_handle, sender)
+    IcedWindowHandle::new(bv_handle, sender)
 }
 
 /// Runs a [`Program`] with the provided settings.
