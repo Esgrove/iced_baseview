@@ -14,10 +14,9 @@ use iced_runtime::futures::futures::{
 pub use iced_runtime::window::{close_events, close_requests, events, open_events, resize_events};
 use iced_widget::core::Size;
 
-#[cfg(feature = "nice-log")]
-use nice_plug_core::nice_error as error;
-
-#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
+#[cfg(all(feature = "log", not(feature = "tracing")))]
+use log::error;
+#[cfg(feature = "tracing")]
 use tracing::error;
 
 use crate::graphics::Compositor;
@@ -362,6 +361,7 @@ impl WindowQueue {
 
     pub fn send(&mut self, command: WindowCommand) {
         if let Err(e) = self.tx.start_send(command) {
+            #[cfg(any(feature = "tracing", feature = "log"))]
             error!("Failed to send command to window: {}", e);
         }
     }

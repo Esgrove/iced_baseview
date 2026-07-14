@@ -15,10 +15,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
-#[cfg(feature = "nice-log")]
-use nice_plug_core::{nice_dbg as debug, nice_error as error, nice_warn as warn};
-
-#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
+#[cfg(all(feature = "log", not(feature = "tracing")))]
+use log::{debug, error, warn};
+#[cfg(feature = "tracing")]
 use tracing::{debug, error, warn};
 
 use crate::Error;
@@ -557,6 +556,7 @@ async fn run_instance<P>(
                     }
 
                     if redraw_count >= 2 {
+                        #[cfg(any(feature = "tracing", feature = "log"))]
                         warn!(
                             "More than 3 consecutive RedrawRequested events produced layout \
                              invalidation"
@@ -602,6 +602,7 @@ async fn run_instance<P>(
                         if logical_size != window.state.logical_size() {
                             logical_size = window.state.logical_size();
 
+                            #[cfg(any(feature = "tracing", feature = "log"))]
                             debug!("Window scale factor changed during a redraw request");
 
                             let ui = interface.take().expect("Remove user interface");
@@ -706,6 +707,7 @@ async fn run_instance<P>(
                         _ => {
                             present_span.finish();
 
+                            #[cfg(any(feature = "tracing", feature = "log"))]
                             error!("Error {error:?} when presenting surface.");
 
                             // Try rendering all windows again next frame.
@@ -891,6 +893,7 @@ where
 }
 
 fn log_unsupported_window_action(command: &str) {
+    #[cfg(any(feature = "tracing", feature = "log"))]
     warn!(
         "window::Action::{} is not supported in the baseview backend",
         command

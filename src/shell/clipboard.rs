@@ -3,9 +3,9 @@
 use crate::core::clipboard::Kind;
 use raw_window_handle::HasDisplayHandle;
 
-#[cfg(feature = "nice-log")]
-use nice_plug_core::nice_warn as warn;
-#[cfg(all(feature = "tracing", not(feature = "nice-log")))]
+#[cfg(all(feature = "log", not(feature = "tracing")))]
+use log::warn;
+#[cfg(feature = "tracing")]
 use tracing::warn;
 
 /// A buffer for short-term storage and transfer within and between
@@ -68,6 +68,7 @@ impl Clipboard {
                 match result {
                     Ok(()) => {}
                     Err(error) => {
+                        #[cfg(any(feature = "tracing", feature = "log"))]
                         warn!("error writing to clipboard: {error}");
                     }
                 }
