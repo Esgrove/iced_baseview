@@ -15,6 +15,8 @@ pub fn baseview_to_iced_events(
     iced_modifiers: &mut IcedModifiers,
     ignore_non_modifier_keys: bool,
     window_id: iced_core::window::Id,
+    system_scale_factor: f64,
+    zoom_factor: f32,
 ) {
     match event {
         BaseEvent::Mouse(mouse_event) => match mouse_event {
@@ -28,7 +30,10 @@ pub fn baseview_to_iced_events(
                 iced_events.push((
                     window_id,
                     IcedEvent::Mouse(IcedMouseEvent::CursorMoved {
-                        position: Point::new(position.x as f32, position.y as f32),
+                        position: Point::new(
+                            (position.x * system_scale_factor * zoom_factor as f64) as f32,
+                            (position.y * system_scale_factor * zoom_factor as f64) as f32,
+                        ),
                     }),
                 ));
             }
@@ -75,7 +80,10 @@ pub fn baseview_to_iced_events(
                     iced_events.push((
                         window_id,
                         IcedEvent::Mouse(IcedMouseEvent::WheelScrolled {
-                            delta: iced_runtime::core::mouse::ScrollDelta::Pixels { x, y },
+                            delta: iced_runtime::core::mouse::ScrollDelta::Pixels {
+                                x: x * system_scale_factor as f32 * zoom_factor,
+                                y: y * system_scale_factor as f32 * zoom_factor,
+                            },
                         }),
                     ));
                 }

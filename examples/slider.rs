@@ -1,8 +1,11 @@
 use iced_baseview::{
-    Center, Fill, IcedBaseviewSettings, PollSubNotifier, Task, Theme, application,
+    Center, Fill, IcedWindowSettings, PollSubNotifier, Task, Theme, application,
     baseview::dpi::LogicalSize,
     widget::{Column, column, container, slider, text, vertical_slider},
 };
+
+const WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(500.0, 300.0);
+const ZOOM_FACTOR: f32 = 1.5;
 
 fn main() {
     tracing::subscriber::set_global_default(
@@ -12,17 +15,25 @@ fn main() {
     )
     .unwrap();
 
-    iced_baseview::open_blocking(
-        IcedBaseviewSettings::new()
+    let (window, _iced_window_handle) = iced_baseview::create_window(
+        IcedWindowSettings::new()
             .with_title("iced_baseview slider")
-            .with_size(LogicalSize::new(500.0, 300.0)),
+            .with_size(WINDOW_SIZE)
+            .with_scale_factor(ZOOM_FACTOR),
         PollSubNotifier::new(),
         || {
-            application(MyProgram::default, MyProgram::update, MyProgram::view)
-                .theme(MyProgram::theme)
-                .run()
+            Ok(
+                application(MyProgram::default, MyProgram::update, MyProgram::view)
+                    .theme(MyProgram::theme)
+                    .scale_factor(|_| ZOOM_FACTOR)
+                    .run(),
+            )
         },
-    );
+        None,
+    )
+    .unwrap();
+
+    window.run_until_closed().unwrap();
 }
 
 #[derive(Debug, Clone, Copy)]

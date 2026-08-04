@@ -1,5 +1,5 @@
 use iced_baseview::{
-    Center, Fill, Font, IcedBaseviewSettings, Pixels, PollSubNotifier, Task, Theme, application,
+    Center, Fill, Font, IcedWindowSettings, Pixels, PollSubNotifier, Task, Theme, application,
     baseview::dpi::LogicalSize,
     widget::{Column, checkbox, column, text, text_input},
 };
@@ -12,17 +12,23 @@ fn main() {
     )
     .unwrap();
 
-    iced_baseview::open_blocking(
-        IcedBaseviewSettings::new()
+    let (window, _iced_window_handle) = iced_baseview::create_window(
+        IcedWindowSettings::new()
             .with_title("iced_baseview text input")
-            .with_size(LogicalSize::new(500.0, 500.0)),
+            .with_size(LogicalSize::new(550.0, 450.0)),
         PollSubNotifier::new(),
         || {
-            application(MyProgram::default, MyProgram::update, MyProgram::view)
-                .theme(MyProgram::theme)
-                .run()
+            Ok(
+                application(MyProgram::default, MyProgram::update, MyProgram::view)
+                    .theme(MyProgram::theme)
+                    .run(),
+            )
         },
-    );
+        None,
+    )
+    .unwrap();
+
+    window.run_until_closed().unwrap();
 }
 
 #[derive(Debug, Clone)]

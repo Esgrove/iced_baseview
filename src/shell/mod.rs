@@ -1,4 +1,5 @@
-use baseview::{EventStatus, WindowContext};
+use baseview::dpi::LogicalSize;
+use baseview::{EventStatus, HandlerError, WindowContext};
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
 use iced_core::{Point, Size, mouse, renderer, theme};
@@ -8,7 +9,6 @@ use iced_futures::{Runtime, futures::channel::mpsc, subscription};
 use iced_program::Program;
 use iced_runtime::{Action, UserInterface, user_interface};
 use iced_widget::graphics::Viewport;
-use raw_window_handle::HasWindowHandle;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,7 +34,7 @@ pub mod settings;
 pub mod window;
 
 use clipboard::Clipboard;
-use settings::IcedBaseviewSettings;
+use settings::IcedWindowSettings;
 use window::{
     IcedWindowHandle, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue,
     state::State as WindowState,
@@ -90,75 +90,61 @@ pub fn poll_events() -> Subscription<()> {
     })
 }
 
-/// Open a new window that blocks the current thread until the window is destroyed.
+/// Create a new window
 ///
-/// * `settings` - The settings of the window.
+/// * `settings` - The settings of the window
 /// * `notifier` - An atomic flag used to notify the program when it should
 ///   poll for new updates and redraw (i.e. as a result of the host updating parameters
 ///   or the audio thread updating the state of meters). This flag is polled every frame
 ///   right before drawing. If the flag is set then the [`poll_events`] subscription
 ///   will be called.
-/// * `build_program` - The function which builds the Iced program.
-pub fn open_blocking<P, B>(
-    settings: IcedBaseviewSettings,
+/// * `build_program` - The function which builds the Iced program
+/// * `host` - An optional baseview [`Host`](baseview::host::Host)
+pub fn create_window<P, B>(
+    mut settings: IcedWindowSettings,
     notifier: PollSubNotifier,
     build_program: B,
-) where
-    P: Program + 'static,
-    B: Send + 'static + FnOnce() -> P,
-{
-    let (sender, receiver) = mpsc::unbounded();
-
-    baseview::Window::open_blocking(
-        settings.window.clone(),
-        move |window: WindowContext| -> IcedWindowHandler<P::Message> {
-            let program = (build_program)();
-            run_inner(window, settings, program, sender, receiver, notifier).expect("Launch window")
-        },
-    );
-}
-
-/// Open a new child window.
-///
-/// * `parent` - The parent window.
-/// * `settings` - The settings of the window.
-/// * `notifier` - An atomic flag used to notify the program when it should
-///   poll for new updates and redraw (i.e. as a result of the host updating parameters
-///   or the audio thread updating the state of meters). This flag is polled every frame
-///   right before drawing. If the flag is set then the [`poll_events`] subscription
-///   will be called.
-/// * `build_program` - The functio which builds the Iced program.
-pub fn open_parented<W, P, B>(
-    parent: &W,
-    settings: IcedBaseviewSettings,
-    notifier: PollSubNotifier,
-    build_program: B,
-) -> IcedWindowHandle<P::Message>
+    host: Option<baseview::host::Host>,
+) -> Result<(baseview::Window, IcedWindowHandle<P::Message>), baseview::Error>
 where
-    W: HasWindowHandle,
     P: Program + 'static,
-    B: Send + 'static + FnOnce() -> P,
+    B: Send + 'static + FnOnce() -> Result<P, HandlerError>,
 {
     let (sender, receiver) = mpsc::unbounded();
     let sender_clone = sender.clone();
 
-    let bv_handle = baseview::Window::open_parented(
-        parent,
-        settings.window.clone(),
-        move |window: WindowContext| -> IcedWindowHandler<P::Message> {
-            let program = (build_program)();
-            run_inner(window, settings, program, sender_clone, receiver, notifier)
-                .expect("Launch window")
-        },
-    );
+    let size = match settings.size {
+        baseview::dpi::Size::Logical(size) => baseview::dpi::Size::Logical(LogicalSize {
+            width: size.width as f64 * settings.scale_factor as f64,
+            height: size.height as f64 * settings.scale_factor as f64,
+        }),
+        baseview::dpi::Size::Physical(size) => baseview::dpi::Size::Physical(size),
+    };
 
-    IcedWindowHandle::new(bv_handle, sender)
+    let mut options = baseview::WindowSettings::new()
+        .with_title(settings.title.clone())
+        .with_size(size)
+        .with_wait_for_parent(settings.wait_for_parent);
+
+    options.parent = settings.parent.take();
+
+    let window = baseview::Window::create_with_host(
+        options,
+        move |window: WindowContext| -> Result<IcedWindowHandler<P::Message>, HandlerError> {
+            let program = (build_program)()?;
+            run_inner(window, settings, program, sender_clone, receiver, notifier)
+                .map_err(|e| e.into())
+        },
+        host,
+    )?;
+
+    Ok((window, IcedWindowHandle::new(sender)))
 }
 
 /// Runs a [`Program`] with the provided settings.
 fn run_inner<P>(
     window: WindowContext,
-    settings: IcedBaseviewSettings,
+    settings: IcedWindowSettings,
     program: P,
     runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
     runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
@@ -174,22 +160,17 @@ where
 
     let (action_tx, action_rx) = mpsc::unbounded::<Action<P::Message>>();
 
-    let window_scale_factor = window.scale_factor();
+    let system_scale_factor = window.scale_factor();
 
     let viewport = {
-        let scale = match settings.window.scale {
-            baseview::WindowScalePolicy::ScaleFactor(scale) => scale,
-            baseview::WindowScalePolicy::SystemScaleFactor => window_scale_factor,
-        };
-
-        let physical_size = settings.window.size.to_physical(scale);
+        let physical_size = window.size().physical;
 
         Viewport::with_physical_size(
             Size {
                 width: physical_size.width,
                 height: physical_size.height,
             },
-            scale as f32,
+            system_scale_factor as f32,
         )
     };
 
@@ -253,9 +234,9 @@ where
         &program,
         window_id,
         viewport.physical_size(),
-        window_scale_factor,
-        settings.window.scale,
+        system_scale_factor,
         iced_core::theme::Mode::None,
+        window_commands_tx.clone(),
     );
     let surface_version = state.surface_version();
 
@@ -341,7 +322,7 @@ async fn run_instance<P>(
     // May be triggered when processing baseview events, will cause the UI to be updated in the next
     // frame
     let mut did_process_event = false;
-    let mut scale_factor = window.window.scale_factor();
+    let mut system_scale_factor = window.window.scale_factor();
 
     'next_event: loop {
         // Empty the queue if possible
@@ -748,6 +729,8 @@ async fn run_instance<P>(
                     &mut window.state.modifiers,
                     window.ignore_non_modifier_keys,
                     window.id,
+                    window.state.system_scale_factor,
+                    window.state.zoom_factor,
                 );
 
                 if events.is_empty() {
@@ -762,8 +745,8 @@ async fn run_instance<P>(
             RuntimeEvent::Resized(new_size) => {
                 window.state.resized(new_size);
 
-                if scale_factor != new_size.scale_factor {
-                    scale_factor = new_size.scale_factor;
+                if system_scale_factor != new_size.scale_factor {
+                    system_scale_factor = new_size.scale_factor;
 
                     events.push((
                         window.id,
@@ -949,7 +932,12 @@ fn run_action<'a, P>(
                 log_unsupported_window_action("DragResize");
             }
             window::Action::Resize(_, size) => {
-                window.queue.send(WindowCommand::ResizeWindow(size));
+                // For some plugins, the zoom factor also changes when the window is resized.
+                let zoom_factor = program.scale_factor(window.id);
+
+                window
+                    .queue
+                    .send(WindowCommand::ResizeWindow { size, zoom_factor })
             }
             window::Action::SetMinSize(..) => {
                 log_unsupported_window_action("SetMinSize");
@@ -982,7 +970,7 @@ fn run_action<'a, P>(
                 log_unsupported_window_action("GetPosition");
             }
             window::Action::GetScaleFactor(_, channel) => {
-                let _ = channel.send(window.state.window_scale_factor());
+                let _ = channel.send(window.state.system_scale_factor());
             }
             window::Action::Move(..) => {
                 log_unsupported_window_action("Move");

@@ -175,9 +175,7 @@ pub use executor::Executor;
 pub use font::Font;
 pub use program::Program;
 pub use renderer::Renderer;
-pub use shell::{
-    PollSubNotifier, open_blocking, open_parented, poll_events, settings::IcedBaseviewSettings,
-};
+pub use shell::{PollSubNotifier, create_window, poll_events, settings::IcedWindowSettings};
 pub use task::Task;
 pub use window::Window;
 

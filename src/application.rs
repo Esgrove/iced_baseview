@@ -224,7 +224,8 @@ impl<P: Program + Send> Application<P> {
         }
     }
 
-    /// Sets the scale factor of the [`Application`].
+    /// Sets the zoom factor of the [`Application`]. This is applied on top of the system's
+    /// scale factor.
     pub fn scale_factor(
         self,
         f: impl Fn(&P::State) -> f32,

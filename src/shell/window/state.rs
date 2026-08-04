@@ -1,16 +1,16 @@
+use baseview::WindowSize;
 use baseview::dpi::LogicalPosition;
-use baseview::{WindowScalePolicy, WindowSize};
 use iced_core::keyboard::Modifiers;
 use iced_core::theme;
 use iced_program::Program;
+use std::marker::PhantomData;
 
 use crate::core::mouse;
 use crate::core::{Color, Size};
 use crate::graphics::Viewport;
 use crate::program;
+use crate::shell::window::WindowQueue;
 use crate::window;
-
-use std::marker::PhantomData;
 
 /// The state of a windowed [`Application`].
 pub struct State<P: Program> {
@@ -22,10 +22,10 @@ pub struct State<P: Program> {
     theme_mode: theme::Mode,
     default_theme: P::Theme,
     style: theme::Style,
-    program_scale_factor: f64,
-    window_scale_factor: f64,
-    scale_policy: WindowScalePolicy,
+    pub zoom_factor: f32,
+    pub system_scale_factor: f64,
     pub modifiers: Modifiers,
+    window_queue: WindowQueue,
     program: PhantomData<P>,
 }
 
@@ -35,23 +35,21 @@ impl<P: Program> State<P> {
         program: &program::Instance<P>,
         window_id: window::Id,
         window_physical_size: Size<u32>,
-        window_scale_factor: f64,
-        scale_policy: WindowScalePolicy,
+        system_scale_factor: f64,
         system_theme: theme::Mode,
+        window_queue: WindowQueue,
     ) -> Self {
         let title = program.title(window_id);
-        let program_scale_factor = program.scale_factor(window_id) as f64;
+        let zoom_factor = program.scale_factor(window_id);
         let theme = program.theme(window_id);
         let theme_mode = theme.as_ref().map(theme::Base::mode).unwrap_or_default();
         let default_theme = <P::Theme as theme::Base>::default(system_theme);
         let style = program.style(theme.as_ref().unwrap_or(&default_theme));
 
-        let scale = match scale_policy {
-            WindowScalePolicy::ScaleFactor(scale) => scale * program_scale_factor,
-            WindowScalePolicy::SystemScaleFactor => window_scale_factor * program_scale_factor,
-        };
-
-        let viewport = Viewport::with_physical_size(window_physical_size, scale as f32);
+        let viewport = Viewport::with_physical_size(
+            window_physical_size,
+            system_scale_factor as f32 * zoom_factor,
+        );
 
         Self {
             _title: title,
@@ -62,10 +60,10 @@ impl<P: Program> State<P> {
             theme_mode,
             default_theme,
             style,
-            program_scale_factor,
-            window_scale_factor,
-            scale_policy,
+            zoom_factor,
+            system_scale_factor,
             modifiers: Default::default(),
+            window_queue,
             program: PhantomData,
         }
     }
@@ -89,8 +87,8 @@ impl<P: Program> State<P> {
         self.viewport.logical_size()
     }
 
-    pub fn window_scale_factor(&self) -> f32 {
-        self.window_scale_factor as f32
+    pub fn system_scale_factor(&self) -> f32 {
+        self.system_scale_factor as f32
     }
 
     /// Returns the current cursor position of the [`State`].
@@ -122,7 +120,7 @@ impl<P: Program> State<P> {
                 modifiers: _,
             }) => {
                 let logical_pos: LogicalPosition<f32> =
-                    position.to_logical(self.window_scale_factor as f64);
+                    position.to_logical(self.system_scale_factor * self.zoom_factor as f64);
 
                 self.cursor_position = Some(crate::core::Point {
                     x: logical_pos.x,
@@ -137,18 +135,11 @@ impl<P: Program> State<P> {
     }
 
     pub fn resized(&mut self, new_size: WindowSize) {
-        self.window_scale_factor = new_size.scale_factor;
-
-        let scale = match self.scale_policy {
-            WindowScalePolicy::ScaleFactor(scale) => scale * self.program_scale_factor,
-            WindowScalePolicy::SystemScaleFactor => {
-                self.window_scale_factor * self.program_scale_factor
-            }
-        };
+        self.system_scale_factor = new_size.scale_factor;
 
         self.viewport = Viewport::with_physical_size(
             Size::new(new_size.physical.width, new_size.physical.height),
-            scale as f32,
+            self.system_scale_factor as f32 * self.zoom_factor,
         );
 
         self.surface_version += 1;
@@ -164,19 +155,14 @@ impl<P: Program> State<P> {
         }
 
         // Update scale factor
-        let new_program_scale_factor = program.scale_factor(window_id) as f64;
-        if self.program_scale_factor != new_program_scale_factor {
-            self.program_scale_factor = new_program_scale_factor;
+        let new_zoom_factor = program.scale_factor(window_id);
+        if self.zoom_factor != new_zoom_factor {
+            self.zoom_factor = new_zoom_factor;
 
-            let scale = match self.scale_policy {
-                WindowScalePolicy::ScaleFactor(scale) => scale * self.program_scale_factor,
-                WindowScalePolicy::SystemScaleFactor => {
-                    self.window_scale_factor * self.program_scale_factor
-                }
-            };
-
-            self.viewport =
-                Viewport::with_physical_size(self.viewport.physical_size(), scale as f32);
+            self.window_queue.send(super::WindowCommand::ResizeWindow {
+                size: self.viewport.logical_size(),
+                zoom_factor: new_zoom_factor,
+            });
         }
 
         // Update theme and appearance
