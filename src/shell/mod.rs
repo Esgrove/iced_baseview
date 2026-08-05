@@ -1,5 +1,5 @@
 use baseview::dpi::LogicalSize;
-use baseview::{EventStatus, HandlerError, WindowContext};
+use baseview::{EventStatus, HandlerError, WindowContext, WindowSize};
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
 use iced_core::{Point, Size, mouse, renderer, theme};
@@ -10,8 +10,8 @@ use iced_program::Program;
 use iced_runtime::{Action, UserInterface, user_interface};
 use iced_widget::graphics::Viewport;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
@@ -35,10 +35,7 @@ pub mod window;
 
 use clipboard::Clipboard;
 use settings::IcedWindowSettings;
-use window::{
-    IcedWindowHandle, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue,
-    state::State as WindowState,
-};
+use window::{IcedMessageSender, IcedWindowHandler, InstanceWindow, WindowCommand, WindowQueue};
 
 pub use proxy::Proxy;
 
@@ -74,7 +71,7 @@ impl Default for PollSubNotifier {
 }
 
 // This is a bit hacky, but Iced doesn't let you define custom subscription
-// events. So instead, we use an event that is never used in baseview.
+// events. So instead, we use an event that is never triggered by baseview.
 //
 // TODO: Ask Iced team to add custom subscription events.
 const POLL_EVENT: iced_core::Event =
@@ -84,10 +81,38 @@ const POLL_EVENT: iced_core::Event =
 /// and redraw (i.e. as a result of the host updating parameters or the audio thread
 /// updating the state of meters).
 pub fn poll_events() -> Subscription<()> {
-    iced_futures::event::listen_raw(|event, _status, _window| match event {
+    iced_futures::event::listen_with(|event, _status, _window| match event {
         POLL_EVENT => Some(()),
         _ => None,
     })
+}
+
+/// A subscription that triggers when the window is resized.
+pub fn window_resized() -> Subscription<()> {
+    iced_futures::event::listen_with(|event, _status, _window| match event {
+        iced_core::Event::Window(iced_core::window::Event::Resized(_)) => Some(()),
+        _ => None,
+    })
+}
+
+/// Used to retrieve the size of the window, including its size in physical pixels.
+///
+/// This can be used to notify the host of the new window size.
+#[derive(Clone)]
+pub struct SharedWindowSize {
+    size: Arc<Mutex<WindowSize>>,
+}
+
+impl SharedWindowSize {
+    pub fn get(&self) -> WindowSize {
+        *self.size.lock().unwrap()
+    }
+}
+
+impl std::fmt::Debug for SharedWindowSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.get().fmt(f)
+    }
 }
 
 /// Create a new window
@@ -105,10 +130,10 @@ pub fn create_window<P, B>(
     notifier: PollSubNotifier,
     build_program: B,
     host: Option<baseview::host::Host>,
-) -> Result<(baseview::Window, IcedWindowHandle<P::Message>), baseview::Error>
+) -> Result<(baseview::Window, IcedMessageSender<P::Message>), baseview::Error>
 where
     P: Program + 'static,
-    B: Send + 'static + FnOnce() -> Result<P, HandlerError>,
+    B: Send + 'static + FnOnce(SharedWindowSize) -> Result<P, HandlerError>,
 {
     let (sender, receiver) = mpsc::unbounded();
     let sender_clone = sender.clone();
@@ -128,17 +153,39 @@ where
 
     options.parent = settings.parent.take();
 
+    let message_sender = IcedMessageSender::new(sender);
+
     let window = baseview::Window::create_with_host(
         options,
         move |window: WindowContext| -> Result<IcedWindowHandler<P::Message>, HandlerError> {
-            let program = (build_program)()?;
-            run_inner(window, settings, program, sender_clone, receiver, notifier)
-                .map_err(|e| e.into())
+            let size = window.size();
+            let total_scale = size.scale_factor * settings.scale_factor as f64;
+
+            let window_size = Arc::new(Mutex::new(WindowSize {
+                logical: size.physical.to_logical(total_scale),
+                physical: size.physical,
+                scale_factor: total_scale,
+            }));
+            let shared_window_size = SharedWindowSize {
+                size: Arc::clone(&window_size),
+            };
+
+            let program = (build_program)(shared_window_size)?;
+            run_inner(
+                window,
+                settings,
+                program,
+                sender_clone,
+                receiver,
+                notifier,
+                window_size,
+            )
+            .map_err(|e| e.into())
         },
         host,
     )?;
 
-    Ok((window, IcedWindowHandle::new(sender)))
+    Ok((window, message_sender))
 }
 
 /// Runs a [`Program`] with the provided settings.
@@ -149,6 +196,7 @@ fn run_inner<P>(
     runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
     runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
     notifier: PollSubNotifier,
+    window_size: Arc<Mutex<WindowSize>>,
 ) -> Result<IcedWindowHandler<P::Message>, Error>
 where
     P: Program + 'static,
@@ -230,7 +278,7 @@ where
 
     let clipboard = unsafe { Clipboard::connect(&window) };
 
-    let state = WindowState::new(
+    let state = self::window::state::State::new(
         &program,
         window_id,
         viewport.physical_size(),
@@ -267,6 +315,7 @@ where
             clipboard,
             Rc::clone(&event_status),
             notifier,
+            window_size,
         )
     });
 
@@ -295,6 +344,7 @@ async fn run_instance<P>(
     mut clipboard: Clipboard,
     event_status: Rc<RefCell<baseview::EventStatus>>,
     notifier: PollSubNotifier,
+    window_size: Arc<Mutex<WindowSize>>,
 ) where
     P: Program + 'static,
     P::Theme: theme::Base,
@@ -743,6 +793,18 @@ async fn run_instance<P>(
                 did_process_event = true;
             }
             RuntimeEvent::Resized(new_size) => {
+                let zoom_factor = window.state.zoom_factor;
+                let total_scale_factor = new_size.scale_factor * zoom_factor as f64;
+
+                let logical_size: LogicalSize<f64> =
+                    new_size.physical.to_logical(total_scale_factor);
+
+                *window_size.lock().unwrap() = WindowSize {
+                    logical: logical_size,
+                    physical: new_size.physical,
+                    scale_factor: total_scale_factor,
+                };
+
                 window.state.resized(new_size);
 
                 if system_scale_factor != new_size.scale_factor {
@@ -751,7 +813,7 @@ async fn run_instance<P>(
                     events.push((
                         window.id,
                         iced_core::Event::Window(iced_core::window::Event::Rescaled(
-                            new_size.scale_factor as f32,
+                            total_scale_factor as f32,
                         )),
                     ));
                 }
@@ -759,8 +821,8 @@ async fn run_instance<P>(
                 events.push((
                     window.id,
                     iced_core::Event::Window(iced_core::window::Event::Resized(Size {
-                        width: new_size.logical.width as f32,
-                        height: new_size.logical.height as f32,
+                        width: logical_size.width as f32,
+                        height: logical_size.height as f32,
                     })),
                 ));
 

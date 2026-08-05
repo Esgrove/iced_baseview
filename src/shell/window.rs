@@ -299,15 +299,28 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 /// be used to send events from the audio thread. Use a realtime-safe ring
 /// buffer instead.
 #[allow(missing_debug_implementations)]
-pub struct IcedWindowHandle<Message: 'static + Send> {
+pub struct IcedMessageSender<Message: 'static + Send> {
     tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
 }
 
-impl<Message: 'static + Send> IcedWindowHandle<Message> {
+impl<Message: 'static + Send> IcedMessageSender<Message> {
     pub(crate) fn new(tx: mpsc::UnboundedSender<RuntimeEvent<Message>>) -> Self {
         Self { tx }
     }
 
+    /// Send a custom message to the window.
+    ///
+    /// Please note this channel is ***NOT*** realtime-safe and should never be
+    /// used to send events from the audio thread. Use a realtime-safe ring
+    /// buffer instead (the [`PollSubNotifier`] can be used by the audio thread
+    /// to notify the GUI that it should poll messages from you realtime-safe
+    /// ring buffer.)
+    pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
+        self.tx
+            .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
+    }
+
+    /*
     /// Send a custom `baseview::Event` to the window.
     ///
     /// Please note this channel is ***not*** realtime-safe and should never be
@@ -316,21 +329,20 @@ impl<Message: 'static + Send> IcedWindowHandle<Message> {
     pub fn send_baseview_event(&mut self, event: baseview::Event) -> Result<(), SendError> {
         self.tx.start_send(RuntimeEvent::Baseview((event, false)))
     }
+    */
+}
 
-    /// Send a custom message to the window.
-    ///
-    /// Please note this channel is ***not*** realtime-safe and should never be
-    /// used to send events from the audio thread. Use a realtime-safe ring
-    /// buffer instead.
-    pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
-        self.tx
-            .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
+impl<Message: 'static + Send> Drop for IcedMessageSender<Message> {
+    fn drop(&mut self) {
+        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
     }
 }
 
-impl<Message: 'static + Send> Drop for IcedWindowHandle<Message> {
-    fn drop(&mut self) {
-        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
+impl<Message: 'static + Send> Clone for IcedMessageSender<Message> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+        }
     }
 }
 

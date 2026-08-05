@@ -40,6 +40,22 @@ pub struct IcedWindowSettings {
     /// reopening the editor) and an iced limitation where it's not possible to have animations
     /// without using an asynchronous timer stream to send redraw messages to the application.
     pub always_redraw: bool,
+
+    /// A fallback scale factor, if Baseview couldn't get one from the platform.
+    ///
+    /// If the platform does already provide an accurate scaling factor, this doesn't do anything.
+    ///
+    /// If the given fallback scale factor is actually useful and different from the current one
+    /// (1.0 by default), this will resize and redraw the window accordingly.
+    ///
+    /// # Platform compatibility notes.
+    ///
+    /// On Win32, this value is used if running on early versions of Windows 10 (or earlier).
+    ///
+    /// On X11, this value is used if no `Xft.dpi`setting is set.
+    ///
+    /// On macOS, this function is always a no-op.
+    pub fallback_scale_factor: Option<f64>,
 }
 
 impl IcedWindowSettings {
@@ -95,6 +111,13 @@ impl IcedWindowSettings {
         self
     }
 
+    /// Sets [`fallback_scale_factor`](Self::fallback_scale_factor) to the given value.
+    #[inline]
+    pub fn with_fallback_scale_factor(mut self, scale_factor: impl Into<Option<f64>>) -> Self {
+        self.fallback_scale_factor = scale_factor.into();
+        self
+    }
+
     /// Ignore key inputs, except for modifier keys such as SHIFT and ALT.
     ///
     /// This may help with misbehaving DAWs in some cases.
@@ -129,6 +152,7 @@ impl Default for IcedWindowSettings {
             wait_for_parent: false,
             ignore_non_modifier_keys: false,
             always_redraw: false,
+            fallback_scale_factor: None,
         }
     }
 }

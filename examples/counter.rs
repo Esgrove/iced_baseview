@@ -12,12 +12,12 @@ fn main() {
     )
     .unwrap();
 
-    let (window, _iced_window_handle) = iced_baseview::create_window(
+    let (window, _iced_handle) = iced_baseview::create_window(
         IcedWindowSettings::new()
             .with_title("iced_baseview counter")
             .with_size(LogicalSize::new(500.0, 300.0)),
         PollSubNotifier::new(),
-        || {
+        |_window_size_sub| {
             Ok(
                 application(MyProgram::default, MyProgram::update, MyProgram::view)
                     .theme(MyProgram::theme)
