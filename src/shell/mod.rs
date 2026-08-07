@@ -759,9 +759,6 @@ async fn run_instance<P>(
                     &mut system_theme,
                 );
             }
-            RuntimeEvent::UserCloseRequested => {
-                window.window.request_close();
-            }
             RuntimeEvent::Baseview((event, do_send_status)) => {
                 window.state.update_cursor_position(&event);
 
@@ -1183,6 +1180,5 @@ pub(crate) enum RuntimeEvent<Message: 'static + Send> {
     UserEvent(iced_runtime::Action<Message>),
     Poll,
     OnFrame,
-    UserCloseRequested,
     WillClose,
 }

@@ -293,8 +293,6 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 
 /// Use this to send custom events to the iced window.
 ///
-/// When this struct is dropped, the window will be requested to closed.
-///
 /// Please note this channel is ***not*** realtime-safe and should never be
 /// be used to send events from the audio thread. Use a realtime-safe ring
 /// buffer instead.
@@ -318,23 +316,6 @@ impl<Message: 'static + Send> IcedMessageSender<Message> {
     pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
         self.tx
             .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
-    }
-
-    /*
-    /// Send a custom `baseview::Event` to the window.
-    ///
-    /// Please note this channel is ***not*** realtime-safe and should never be
-    /// be used to send events from the audio thread. Use a realtime-safe ring
-    /// buffer instead.
-    pub fn send_baseview_event(&mut self, event: baseview::Event) -> Result<(), SendError> {
-        self.tx.start_send(RuntimeEvent::Baseview((event, false)))
-    }
-    */
-}
-
-impl<Message: 'static + Send> Drop for IcedMessageSender<Message> {
-    fn drop(&mut self) {
-        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
     }
 }
 
