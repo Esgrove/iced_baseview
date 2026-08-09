@@ -16,7 +16,7 @@ fn main() {
 
     let scale_factor = 1.0;
 
-    let (window, _iced_handle) = iced_baseview::create_window(
+    let (window, _message_sender) = iced_baseview::create_window(
         IcedWindowSettings::new()
             .with_title("iced_baseview scale_factor")
             .with_size(WINDOW_SIZE)

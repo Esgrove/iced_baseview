@@ -9,6 +9,7 @@ use crate::core::mouse;
 use crate::core::{Color, Size};
 use crate::graphics::Viewport;
 use crate::program;
+use crate::shell::SharedWindowSize;
 use crate::shell::window::WindowQueue;
 use crate::window;
 
@@ -22,7 +23,7 @@ pub struct State<P: Program> {
     theme_mode: theme::Mode,
     default_theme: P::Theme,
     style: theme::Style,
-    pub zoom_factor: f32,
+    shared_window_size: SharedWindowSize,
     pub system_scale_factor: f64,
     pub modifiers: Modifiers,
     window_queue: WindowQueue,
@@ -38,6 +39,7 @@ impl<P: Program> State<P> {
         system_scale_factor: f64,
         system_theme: theme::Mode,
         window_queue: WindowQueue,
+        shared_window_size: SharedWindowSize,
     ) -> Self {
         let title = program.title(window_id);
         let zoom_factor = program.scale_factor(window_id);
@@ -51,6 +53,8 @@ impl<P: Program> State<P> {
             system_scale_factor as f32 * zoom_factor,
         );
 
+        shared_window_size.set_user_scale_factor(zoom_factor);
+
         Self {
             _title: title,
             viewport,
@@ -60,7 +64,7 @@ impl<P: Program> State<P> {
             theme_mode,
             default_theme,
             style,
-            zoom_factor,
+            shared_window_size,
             system_scale_factor,
             modifiers: Default::default(),
             window_queue,
@@ -119,8 +123,10 @@ impl<P: Program> State<P> {
                 position,
                 modifiers: _,
             }) => {
+                let zoom_factor = self.shared_window_size.user_scale_factor();
+
                 let logical_pos: LogicalPosition<f32> =
-                    position.to_logical(self.system_scale_factor * self.zoom_factor as f64);
+                    position.to_logical(self.system_scale_factor * zoom_factor as f64);
 
                 self.cursor_position = Some(crate::core::Point {
                     x: logical_pos.x,
@@ -135,11 +141,22 @@ impl<P: Program> State<P> {
     }
 
     pub fn resized(&mut self, new_size: WindowSize) {
-        self.system_scale_factor = new_size.scale_factor;
+        let zoom_factor = self.shared_window_size.user_scale_factor();
+        let total_scale_factor = new_size.scale_factor * zoom_factor as f64;
+
+        if self.system_scale_factor != new_size.scale_factor {
+            self.system_scale_factor = new_size.scale_factor;
+
+            // Resize the window with the previous logical size if the scale
+            // factor changed.
+            self.window_queue.send(super::WindowCommand::ResizeWindow {
+                size: self.viewport.logical_size(),
+            });
+        }
 
         self.viewport = Viewport::with_physical_size(
             Size::new(new_size.physical.width, new_size.physical.height),
-            self.system_scale_factor as f32 * self.zoom_factor,
+            total_scale_factor as f32,
         );
 
         self.surface_version += 1;
@@ -155,13 +172,14 @@ impl<P: Program> State<P> {
         }
 
         // Update scale factor
+        let zoom_factor = self.shared_window_size.user_scale_factor();
         let new_zoom_factor = program.scale_factor(window_id);
-        if self.zoom_factor != new_zoom_factor {
-            self.zoom_factor = new_zoom_factor;
+        if zoom_factor != new_zoom_factor {
+            self.shared_window_size
+                .set_user_scale_factor(new_zoom_factor);
 
             self.window_queue.send(super::WindowCommand::ResizeWindow {
                 size: self.viewport.logical_size(),
-                zoom_factor: new_zoom_factor,
             });
         }
 

@@ -109,9 +109,10 @@ window_clipboard = { version = "0.5", default-features = false }
 sysinfo = { version = "0.39.6", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 keyboard-types = { version = "0.8.3", default-features = false }
-
-baseview = "0.3"
+#baseview = "0.3"
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "f106a5190f3a5861cacba7cab9ceb4f9532ebdfe" }
 raw-window-handle = "0.6"
+crossbeam-utils = "0.8.22"
 thiserror = "2"
 tracing = { version = "0.1", optional = true }
 log = { version = "0.4", optional = true }

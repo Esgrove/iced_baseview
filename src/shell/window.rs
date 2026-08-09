@@ -20,7 +20,7 @@ use log::error;
 use tracing::error;
 
 use crate::graphics::Compositor;
-use crate::shell::RuntimeEvent;
+use crate::shell::{RuntimeEvent, SharedWindowSize};
 
 pub(super) mod state;
 
@@ -54,6 +54,7 @@ pub(super) struct IcedWindowHandler<Message: 'static + Send> {
     runtime_state: RefCell<RuntimeState>,
     window: WindowContext,
     event_status: Rc<RefCell<EventStatus>>,
+    shared_window_size: SharedWindowSize,
 }
 
 struct IcedWindowHandlerInner<Message: 'static + Send> {
@@ -76,6 +77,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
         window_commands_rx: mpsc::UnboundedReceiver<WindowCommand>,
         runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
         action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
+        shared_window_size: SharedWindowSize,
     ) -> Self {
         Self {
             inner: RefCell::new(IcedWindowHandlerInner {
@@ -90,16 +92,32 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             }),
             window,
             event_status,
+            shared_window_size,
         }
     }
 
     fn drain_window_commands(&self) {
+        if let Some(size) = self.shared_window_size.get_requested_size() {
+            let zoom_factor = self.shared_window_size.user_scale_factor();
+
+            let size = baseview::dpi::Size::Logical(LogicalSize {
+                width: (size.width * zoom_factor) as f64,
+                height: (size.height * zoom_factor) as f64,
+            });
+
+            if let Err(e) = self.window.resize(size) {
+                error!("Failed to resize window to {:?}: {}", size, e);
+            }
+        }
+
         while let Ok(cmd) = { self.window_commands_rx.borrow_mut().try_recv() } {
             match cmd {
                 WindowCommand::CloseWindow => {
                     self.window.request_close();
                 }
-                WindowCommand::ResizeWindow { size, zoom_factor } => {
+                WindowCommand::ResizeWindow { size } => {
+                    let zoom_factor = self.shared_window_size.user_scale_factor();
+
                     let size = baseview::dpi::Size::Logical(LogicalSize {
                         width: (size.width * zoom_factor) as f64,
                         height: (size.height * zoom_factor) as f64,
@@ -329,7 +347,7 @@ impl<Message: 'static + Send> Clone for IcedMessageSender<Message> {
 
 pub(crate) enum WindowCommand {
     CloseWindow,
-    ResizeWindow { size: Size, zoom_factor: f32 },
+    ResizeWindow { size: Size },
     Focus,
     SetCursorIcon(baseview::MouseCursor),
 }

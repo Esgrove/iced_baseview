@@ -12,7 +12,7 @@ fn main() {
     )
     .unwrap();
 
-    let (window, _iced_handle) = iced_baseview::create_window(
+    let (window, _message_sender) = iced_baseview::create_window(
         IcedWindowSettings::new()
             .with_title("iced_baseview text input")
             .with_size(LogicalSize::new(550.0, 450.0)),

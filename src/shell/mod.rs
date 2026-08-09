@@ -1,5 +1,6 @@
 use baseview::dpi::LogicalSize;
 use baseview::{EventStatus, HandlerError, WindowContext, WindowSize};
+use crossbeam_utils::atomic::AtomicCell;
 use iced_core::widget::operation;
 use iced_core::window::RedrawRequest;
 use iced_core::{Point, Size, mouse, renderer, theme};
@@ -100,12 +101,43 @@ pub fn window_resized() -> Subscription<()> {
 /// This can be used to notify the host of the new window size.
 #[derive(Clone)]
 pub struct SharedWindowSize {
-    size: Arc<Mutex<WindowSize>>,
+    inner: Arc<SharedWindowSizeInner>,
+}
+
+struct SharedWindowSizeInner {
+    size: Mutex<WindowSize>,
+    user_scale_factor: AtomicCell<f32>,
+    requested_resize: AtomicCell<LogicalSize<f32>>,
 }
 
 impl SharedWindowSize {
     pub fn get(&self) -> WindowSize {
-        *self.size.lock().unwrap()
+        *self.inner.size.lock().unwrap()
+    }
+
+    pub fn request_resize(&self, size: LogicalSize<f32>) {
+        self.inner.requested_resize.store(size);
+    }
+
+    pub fn user_scale_factor(&self) -> f32 {
+        self.inner.user_scale_factor.load()
+    }
+
+    fn set(&self, size: WindowSize) {
+        *self.inner.size.lock().unwrap() = size;
+    }
+
+    fn set_user_scale_factor(&self, scale_factor: f32) {
+        self.inner.user_scale_factor.store(scale_factor);
+    }
+
+    fn get_requested_size(&self) -> Option<LogicalSize<f32>> {
+        let size = self.inner.requested_resize.swap(LogicalSize::default());
+        if size == LogicalSize::default() {
+            None
+        } else {
+            Some(size)
+        }
     }
 }
 
@@ -161,16 +193,19 @@ where
             let size = window.size();
             let total_scale = size.scale_factor * settings.scale_factor as f64;
 
-            let window_size = Arc::new(Mutex::new(WindowSize {
-                logical: size.physical.to_logical(total_scale),
-                physical: size.physical,
-                scale_factor: total_scale,
-            }));
             let shared_window_size = SharedWindowSize {
-                size: Arc::clone(&window_size),
+                inner: Arc::new(SharedWindowSizeInner {
+                    size: Mutex::new(WindowSize {
+                        logical: size.physical.to_logical(total_scale),
+                        physical: size.physical,
+                        scale_factor: total_scale,
+                    }),
+                    user_scale_factor: AtomicCell::new(settings.scale_factor),
+                    requested_resize: AtomicCell::new(LogicalSize::default()),
+                }),
             };
 
-            let program = (build_program)(shared_window_size)?;
+            let program = (build_program)(shared_window_size.clone())?;
             run_inner(
                 window,
                 settings,
@@ -178,7 +213,7 @@ where
                 sender_clone,
                 receiver,
                 notifier,
-                window_size,
+                shared_window_size,
             )
             .map_err(|e| e.into())
         },
@@ -196,7 +231,7 @@ fn run_inner<P>(
     runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<P::Message>>,
     runtime_event_rx: mpsc::UnboundedReceiver<RuntimeEvent<P::Message>>,
     notifier: PollSubNotifier,
-    window_size: Arc<Mutex<WindowSize>>,
+    window_size: SharedWindowSize,
 ) -> Result<IcedWindowHandler<P::Message>, Error>
 where
     P: Program + 'static,
@@ -285,6 +320,7 @@ where
         system_scale_factor,
         iced_core::theme::Mode::None,
         window_commands_tx.clone(),
+        window_size.clone(),
     );
     let surface_version = state.surface_version();
 
@@ -315,7 +351,7 @@ where
             clipboard,
             Rc::clone(&event_status),
             notifier,
-            window_size,
+            window_size.clone(),
         )
     });
 
@@ -331,6 +367,7 @@ where
         window_commands_rx,
         runtime_event_tx,
         action_rx,
+        window_size,
     ))
 }
 
@@ -344,7 +381,7 @@ async fn run_instance<P>(
     mut clipboard: Clipboard,
     event_status: Rc<RefCell<baseview::EventStatus>>,
     notifier: PollSubNotifier,
-    window_size: Arc<Mutex<WindowSize>>,
+    window_size: SharedWindowSize,
 ) where
     P: Program + 'static,
     P::Theme: theme::Base,
@@ -770,6 +807,8 @@ async fn run_instance<P>(
                     _ => {}
                 }
 
+                let zoom_factor = window_size.user_scale_factor();
+
                 crate::shell::conversion::baseview_to_iced_events(
                     event,
                     &mut events,
@@ -777,7 +816,7 @@ async fn run_instance<P>(
                     window.ignore_non_modifier_keys,
                     window.id,
                     window.state.system_scale_factor,
-                    window.state.zoom_factor,
+                    zoom_factor,
                 );
 
                 if events.is_empty() {
@@ -790,17 +829,17 @@ async fn run_instance<P>(
                 did_process_event = true;
             }
             RuntimeEvent::Resized(new_size) => {
-                let zoom_factor = window.state.zoom_factor;
+                let zoom_factor = window_size.user_scale_factor();
                 let total_scale_factor = new_size.scale_factor * zoom_factor as f64;
 
                 let logical_size: LogicalSize<f64> =
                     new_size.physical.to_logical(total_scale_factor);
 
-                *window_size.lock().unwrap() = WindowSize {
+                window_size.set(WindowSize {
                     logical: logical_size,
                     physical: new_size.physical,
                     scale_factor: total_scale_factor,
-                };
+                });
 
                 window.state.resized(new_size);
 
@@ -991,12 +1030,7 @@ fn run_action<'a, P>(
                 log_unsupported_window_action("DragResize");
             }
             window::Action::Resize(_, size) => {
-                // For some plugins, the zoom factor also changes when the window is resized.
-                let zoom_factor = program.scale_factor(window.id);
-
-                window
-                    .queue
-                    .send(WindowCommand::ResizeWindow { size, zoom_factor })
+                window.queue.send(WindowCommand::ResizeWindow { size })
             }
             window::Action::SetMinSize(..) => {
                 log_unsupported_window_action("SetMinSize");
