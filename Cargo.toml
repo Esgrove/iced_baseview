@@ -110,7 +110,7 @@ sysinfo = { version = "0.39.6", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 keyboard-types = { version = "0.8.3", default-features = false }
 #baseview = "0.3"
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "f106a5190f3a5861cacba7cab9ceb4f9532ebdfe" }
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "e85e49515126f990904522604b656722dbc65a39" }
 raw-window-handle = "0.6"
 crossbeam-utils = "0.8.22"
 thiserror = "2"
