@@ -181,6 +181,9 @@ where
     let mut options = baseview::WindowSettings::new()
         .with_title(settings.title.clone())
         .with_size(size)
+        .with_min_size::<baseview::dpi::Size>(settings.min_size)
+        .with_max_size::<baseview::dpi::Size>(settings.max_size)
+        .with_resizable(settings.resizable)
         .with_wait_for_parent(settings.wait_for_parent);
 
     options.parent = settings.parent.take();

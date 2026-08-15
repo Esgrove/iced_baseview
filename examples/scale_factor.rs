@@ -5,6 +5,7 @@ use iced_baseview::{
 };
 
 const WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(550.0, 200.0);
+const MIN_WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(550.0, 150.0);
 
 fn main() {
     tracing::subscriber::set_global_default(
@@ -20,6 +21,8 @@ fn main() {
         IcedWindowSettings::new()
             .with_title("iced_baseview scale_factor")
             .with_size(WINDOW_SIZE)
+            .with_min_size(Some(MIN_WINDOW_SIZE))
+            .with_resizable(true)
             .with_scale_factor(scale_factor),
         PollSubNotifier::new(),
         move |_window_size_sub| {
