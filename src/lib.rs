@@ -176,7 +176,7 @@ pub use font::Font;
 pub use program::Program;
 pub use renderer::Renderer;
 pub use shell::{
-    PollSubNotifier, open_blocking, open_parented, poll_events, settings::IcedBaseviewSettings,
+    PollSubNotifier, create_window, poll_events, settings::IcedWindowSettings, window_resized,
 };
 pub use task::Task;
 pub use window::Window;

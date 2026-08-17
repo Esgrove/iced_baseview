@@ -2,7 +2,7 @@ use std::time::Instant;
 use std::{cell::RefCell, pin::Pin, rc::Rc};
 
 use baseview::dpi::LogicalSize;
-use baseview::{EventStatus, WindowContext, WindowHandler};
+use baseview::{EventStatus, HandlerError, WindowContext, WindowHandler};
 use iced_core::{mouse, theme};
 use iced_program::Program;
 use iced_runtime::Task;
@@ -20,7 +20,7 @@ use log::error;
 use tracing::error;
 
 use crate::graphics::Compositor;
-use crate::shell::RuntimeEvent;
+use crate::shell::{RuntimeEvent, SharedWindowSize};
 
 pub(super) mod state;
 
@@ -54,6 +54,7 @@ pub(super) struct IcedWindowHandler<Message: 'static + Send> {
     runtime_state: RefCell<RuntimeState>,
     window: WindowContext,
     event_status: Rc<RefCell<EventStatus>>,
+    shared_window_size: SharedWindowSize,
 }
 
 struct IcedWindowHandlerInner<Message: 'static + Send> {
@@ -76,6 +77,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
         window_commands_rx: mpsc::UnboundedReceiver<WindowCommand>,
         runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
         action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
+        shared_window_size: SharedWindowSize,
     ) -> Self {
         Self {
             inner: RefCell::new(IcedWindowHandlerInner {
@@ -90,27 +92,50 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             }),
             window,
             event_status,
+            shared_window_size,
         }
     }
 
     fn drain_window_commands(&self) {
+        if let Some(size) = self.shared_window_size.get_requested_size() {
+            let zoom_factor = self.shared_window_size.user_scale_factor();
+
+            let size = baseview::dpi::Size::Logical(LogicalSize {
+                width: (size.width * zoom_factor) as f64,
+                height: (size.height * zoom_factor) as f64,
+            });
+
+            if let Err(e) = self.window.resize(size) {
+                error!("Failed to resize window to {:?}: {}", size, e);
+            }
+        }
+
         while let Ok(cmd) = { self.window_commands_rx.borrow_mut().try_recv() } {
             match cmd {
                 WindowCommand::CloseWindow => {
                     self.window.request_close();
                 }
-                WindowCommand::ResizeWindow(size) => {
-                    self.window
-                        .resize(baseview::dpi::Size::Logical(LogicalSize {
-                            width: size.width as f64,
-                            height: size.height as f64,
-                        }));
+                WindowCommand::ResizeWindow { size } => {
+                    let zoom_factor = self.shared_window_size.user_scale_factor();
+
+                    let size = baseview::dpi::Size::Logical(LogicalSize {
+                        width: (size.width * zoom_factor) as f64,
+                        height: (size.height * zoom_factor) as f64,
+                    });
+
+                    if let Err(e) = self.window.resize(size) {
+                        error!("Failed to resize window to {:?}: {}", size, e);
+                    }
                 }
                 WindowCommand::Focus => {
-                    self.window.focus();
+                    if let Err(e) = self.window.focus() {
+                        error!("Failed to focus window: {}", e);
+                    }
                 }
                 WindowCommand::SetCursorIcon(cursor) => {
-                    self.window.set_mouse_cursor(cursor);
+                    if let Err(e) = self.window.set_mouse_cursor(cursor) {
+                        error!("Failed to set window cursor icon: {}", e);
+                    }
                 }
             }
         }
@@ -130,18 +155,15 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
 }
 
 impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
-    fn on_frame(&self) {
+    fn on_frame(&self) -> Result<(), HandlerError> {
         {
             let mut inner = self.inner.borrow_mut();
 
             if inner.processed_close_signal {
-                return;
+                return Ok(());
             }
 
-            inner
-                .runtime_event_tx
-                .start_send(RuntimeEvent::Poll)
-                .unwrap();
+            inner.runtime_event_tx.start_send(RuntimeEvent::Poll)?;
         }
 
         self.poll_runtime();
@@ -153,20 +175,18 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
             while let Ok(message) = inner.action_rx.try_recv() {
                 inner
                     .runtime_event_tx
-                    .start_send(RuntimeEvent::UserEvent(message))
-                    .unwrap();
+                    .start_send(RuntimeEvent::UserEvent(message))?;
             }
 
             // Send the event to the instance.
-            inner
-                .runtime_event_tx
-                .start_send(RuntimeEvent::OnFrame)
-                .unwrap();
+            inner.runtime_event_tx.start_send(RuntimeEvent::OnFrame)?;
         }
 
         self.poll_runtime();
 
         self.drain_window_commands();
+
+        Ok(())
     }
 
     fn on_event(&self, event: baseview::Event) -> EventStatus {
@@ -179,7 +199,9 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
             baseview::Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
         ) && !self.window.has_focus()
         {
-            self.window.focus();
+            if let Err(e) = self.window.focus() {
+                error!("Failed to focus window: {}", e);
+            }
         }
 
         let ignore_event;
@@ -224,18 +246,17 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
         }
     }
 
-    fn resized(&self, new_size: baseview::WindowSize) {
+    fn resized(&self, new_size: baseview::WindowSize) -> Result<(), HandlerError> {
         {
             let mut inner = self.inner.borrow_mut();
 
             if inner.processed_close_signal {
-                return;
+                return Ok(());
             }
 
             inner
                 .runtime_event_tx
-                .start_send(RuntimeEvent::Resized(new_size))
-                .expect("Send event");
+                .start_send(RuntimeEvent::Resized(new_size))?;
         }
 
         self.poll_runtime();
@@ -243,6 +264,8 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
         if !self.inner.borrow().processed_close_signal {
             self.drain_window_commands();
         }
+
+        Ok(())
     }
 }
 
@@ -288,67 +311,50 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 
 /// Use this to send custom events to the iced window.
 ///
-/// When this struct is dropped, the window will be closed.
-///
 /// Please note this channel is ***not*** realtime-safe and should never be
 /// be used to send events from the audio thread. Use a realtime-safe ring
 /// buffer instead.
 #[allow(missing_debug_implementations)]
-pub struct IcedWindowHandle<Message: 'static + Send> {
-    bv_handle: baseview::WindowHandle,
+pub struct IcedMessageSender<Message: 'static + Send> {
     tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
 }
 
-impl<Message: 'static + Send> IcedWindowHandle<Message> {
-    pub(crate) fn new(
-        bv_handle: baseview::WindowHandle,
-        tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
-    ) -> Self {
-        Self { bv_handle, tx }
-    }
-
-    /// Send a custom `baseview::Event` to the window.
-    ///
-    /// Please note this channel is ***not*** realtime-safe and should never be
-    /// be used to send events from the audio thread. Use a realtime-safe ring
-    /// buffer instead.
-    pub fn send_baseview_event(&mut self, event: baseview::Event) -> Result<(), SendError> {
-        self.tx.start_send(RuntimeEvent::Baseview((event, false)))
+impl<Message: 'static + Send> IcedMessageSender<Message> {
+    pub(crate) fn new(tx: mpsc::UnboundedSender<RuntimeEvent<Message>>) -> Self {
+        Self { tx }
     }
 
     /// Send a custom message to the window.
     ///
-    /// Please note this channel is ***not*** realtime-safe and should never be
+    /// Please note this channel is ***NOT*** realtime-safe and should never be
     /// used to send events from the audio thread. Use a realtime-safe ring
-    /// buffer instead.
+    /// buffer instead (the [`PollSubNotifier`] can be used by the audio thread
+    /// to notify the GUI that it should poll messages from you realtime-safe
+    /// ring buffer.)
     pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
         self.tx
             .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
     }
+}
 
-    /// Returns `true` if the window is still open, and `false` if the window
-    /// was closed/dropped.
-    pub fn is_open(&self) -> bool {
-        self.bv_handle.is_open()
+impl<Message: 'static + Send> Clone for IcedMessageSender<Message> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+        }
     }
 }
 
-impl<Message: 'static + Send> Drop for IcedWindowHandle<Message> {
-    fn drop(&mut self) {
-        self.bv_handle.close();
-        let _ = self.tx.start_send(RuntimeEvent::UserCloseRequested);
-    }
-}
-
-pub enum WindowCommand {
+pub(crate) enum WindowCommand {
     CloseWindow,
-    ResizeWindow(crate::core::Size),
+    ResizeWindow { size: Size },
     Focus,
     SetCursorIcon(baseview::MouseCursor),
 }
 
 /// Used to request things from the `baseview` window.
-pub struct WindowQueue {
+#[derive(Clone)]
+pub(crate) struct WindowQueue {
     tx: mpsc::UnboundedSender<WindowCommand>,
 }
 

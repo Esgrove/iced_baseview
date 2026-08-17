@@ -1,5 +1,5 @@
 use iced_baseview::{
-    Center, IcedBaseviewSettings, PollSubNotifier, Theme, application,
+    Center, IcedWindowSettings, PollSubNotifier, Theme, application,
     baseview::dpi::LogicalSize,
     widget::{Column, button, column, text},
 };
@@ -12,17 +12,23 @@ fn main() {
     )
     .unwrap();
 
-    iced_baseview::open_blocking(
-        IcedBaseviewSettings::new()
+    let (window, _message_sender) = iced_baseview::create_window(
+        IcedWindowSettings::new()
             .with_title("iced_baseview counter")
             .with_size(LogicalSize::new(500.0, 300.0)),
         PollSubNotifier::new(),
-        || {
-            application(MyProgram::default, MyProgram::update, MyProgram::view)
-                .theme(MyProgram::theme)
-                .run()
+        |_window_size_sub| {
+            Ok(
+                application(MyProgram::default, MyProgram::update, MyProgram::view)
+                    .theme(MyProgram::theme)
+                    .run(),
+            )
         },
-    );
+        None,
+    )
+    .unwrap();
+
+    window.run_until_closed().unwrap();
 }
 
 #[derive(Debug, Clone, Copy)]
