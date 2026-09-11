@@ -1,5 +1,4 @@
 use baseview::WindowSize;
-use baseview::dpi::LogicalPosition;
 use iced_core::keyboard::Modifiers;
 use iced_core::theme;
 use iced_program::Program;
@@ -10,6 +9,7 @@ use crate::core::{Color, Size};
 use crate::graphics::Viewport;
 use crate::program;
 use crate::shell::SharedWindowSize;
+use crate::shell::conversion::cursor_position;
 use crate::shell::window::WindowQueue;
 use crate::window;
 
@@ -125,13 +125,11 @@ impl<P: Program> State<P> {
             }) => {
                 let zoom_factor = self.shared_window_size.user_scale_factor();
 
-                let logical_pos: LogicalPosition<f32> =
-                    position.to_logical(self.system_scale_factor * zoom_factor as f64);
-
-                self.cursor_position = Some(crate::core::Point {
-                    x: logical_pos.x,
-                    y: logical_pos.y,
-                });
+                self.cursor_position = Some(cursor_position(
+                    *position,
+                    self.system_scale_factor,
+                    zoom_factor,
+                ));
             }
             baseview::Event::Mouse(baseview::MouseEvent::CursorLeft) => {
                 self.cursor_position = None;

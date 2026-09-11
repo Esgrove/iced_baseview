@@ -1,4 +1,5 @@
 use baseview::Event as BaseEvent;
+use baseview::dpi::LogicalPosition;
 use baseview::dpi::PhysicalPosition;
 use iced_runtime::core::Event as IcedEvent;
 use iced_runtime::core::Point;
@@ -27,13 +28,11 @@ pub fn baseview_to_iced_events(
                 if let Some(event) = update_modifiers(iced_modifiers, modifiers) {
                     iced_events.push((window_id, event));
                 }
+
                 iced_events.push((
                     window_id,
                     IcedEvent::Mouse(IcedMouseEvent::CursorMoved {
-                        position: Point::new(
-                            (position.x * system_scale_factor * zoom_factor as f64) as f32,
-                            (position.y * system_scale_factor * zoom_factor as f64) as f32,
-                        ),
+                        position: cursor_position(position, system_scale_factor, zoom_factor),
                     }),
                 ));
             }
@@ -228,11 +227,18 @@ fn baseview_mouse_button_to_iced(id: baseview::MouseButton) -> Option<IcedMouseB
 }
 
 /// Converts a physical cursor position to a logical `Point`.
-pub fn cursor_position(position: PhysicalPosition<i32>, scale_factor: f32) -> Point {
-    Point::new(
-        (f64::from(position.x) * scale_factor as f64) as f32,
-        (f64::from(position.y) * scale_factor as f64) as f32,
-    )
+pub fn cursor_position(
+    position: PhysicalPosition<f64>,
+    system_scale_factor: f64,
+    zoom_factor: f32,
+) -> Point {
+    let logical_pos: LogicalPosition<f32> =
+        position.to_logical(system_scale_factor * zoom_factor as f64);
+
+    Point {
+        x: logical_pos.x,
+        y: logical_pos.y,
+    }
 }
 
 /*
