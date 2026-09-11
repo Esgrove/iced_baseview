@@ -242,7 +242,10 @@ where
 {
     let boot_span = iced_debug::boot();
     let program_settings = program.settings();
-    let graphics_settings: iced_widget::graphics::Settings = program_settings.clone().into();
+    let mut graphics_settings: iced_widget::graphics::Settings = program_settings.clone().into();
+
+    // Important: plugins should never use vsync as it blocks the host's main thread.
+    graphics_settings.vsync = false;
 
     let (action_tx, action_rx) = mpsc::unbounded::<Action<P::Message>>();
 
