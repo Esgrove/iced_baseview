@@ -1,4 +1,6 @@
 //! Configure your application.
+use std::time::Duration;
+
 use baseview::{
     ParentWindowHandle,
     dpi::{LogicalSize, Size},
@@ -64,6 +66,14 @@ pub struct IcedWindowSettings {
     ///
     /// On macOS, this function is always a no-op.
     pub fallback_scale_factor: Option<f64>,
+
+    /// The rate at which the [`poll_events`](crate::poll_events) subscription will trigger.
+    ///
+    /// This subscription may trigger more often than this, but it will not trigger slower
+    /// than this (or at least as long as the backend's timer is precise enough).
+    ///
+    /// Defaults to `1.0 / 64.0` seconds.
+    pub poll_interval: Duration,
 }
 
 impl IcedWindowSettings {
@@ -172,6 +182,15 @@ impl IcedWindowSettings {
         self.always_redraw = always_redraw;
         self
     }
+
+    /// The rate at which the [`poll_events`](crate::poll_events) subscription will trigger.
+    ///
+    /// Defaults to `1.0 / 64.0` seconds.
+    #[inline]
+    pub fn with_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
 }
 
 impl Default for IcedWindowSettings {
@@ -191,6 +210,7 @@ impl Default for IcedWindowSettings {
             ignore_non_modifier_keys: false,
             always_redraw: false,
             fallback_scale_factor: None,
+            poll_interval: Duration::from_secs_f64(1.0 / 64.0),
         }
     }
 }

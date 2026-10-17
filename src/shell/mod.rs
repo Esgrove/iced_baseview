@@ -244,6 +244,10 @@ where
     let program_settings = program.settings();
     let mut graphics_settings: iced_widget::graphics::Settings = program_settings.clone().into();
 
+    let poll_timer = window
+        .create_timer(settings.poll_interval)
+        .map_err(|_| Error::TimerCreationFailed)?;
+
     // Important: plugins should never use vsync as it blocks the host's main thread.
     graphics_settings.vsync = false;
 
@@ -374,6 +378,7 @@ where
         runtime_event_tx,
         action_rx,
         window_size,
+        poll_timer,
     ))
 }
 
@@ -439,7 +444,7 @@ async fn run_instance<P>(
                     });
                 }
             }
-            RuntimeEvent::OnFrame => {
+            RuntimeEvent::Draw => {
                 #[cfg(feature = "unconditional-rendering")]
                 {
                     window.redraw_requested = true;
@@ -1219,6 +1224,6 @@ pub(crate) enum RuntimeEvent<Message: 'static + Send> {
     Resized(baseview::WindowSize),
     UserEvent(iced_runtime::Action<Message>),
     Poll,
-    OnFrame,
+    Draw,
     WillClose,
 }

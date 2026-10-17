@@ -55,6 +55,7 @@ pub(super) struct IcedWindowHandler<Message: 'static + Send> {
     window: WindowContext,
     event_status: Rc<RefCell<EventStatus>>,
     shared_window_size: SharedWindowSize,
+    poll_timer: baseview::TimerHandle,
 }
 
 struct IcedWindowHandlerInner<Message: 'static + Send> {
@@ -78,6 +79,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
         runtime_event_tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
         action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
         shared_window_size: SharedWindowSize,
+        poll_timer: baseview::TimerHandle,
     ) -> Self {
         Self {
             inner: RefCell::new(IcedWindowHandlerInner {
@@ -93,6 +95,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             window,
             event_status,
             shared_window_size,
+            poll_timer,
         }
     }
 
@@ -141,21 +144,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
         }
     }
 
-    fn poll_runtime(&self) {
-        let mut runtime = self.runtime_state.borrow_mut();
-
-        let RuntimeState {
-            instance,
-            runtime_context,
-        } = &mut *runtime;
-
-        // Flush all messages. This will block until the instance is finished.
-        let _ = instance.as_mut().poll(runtime_context);
-    }
-}
-
-impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
-    fn on_frame(&self) -> Result<(), HandlerError> {
+    fn poll_runtime(&self) -> Result<(), HandlerError> {
         {
             let mut inner = self.inner.borrow_mut();
 
@@ -166,8 +155,22 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
             inner.runtime_event_tx.start_send(RuntimeEvent::Poll)?;
         }
 
-        self.poll_runtime();
+        {
+            let mut runtime = self.runtime_state.borrow_mut();
 
+            let RuntimeState {
+                instance,
+                runtime_context,
+            } = &mut *runtime;
+
+            // Flush all messages. This will block until the instance is finished.
+            let _ = instance.as_mut().poll(runtime_context);
+        }
+
+        Ok(())
+    }
+
+    fn update_runtime(&self, send_draw_event: bool) -> Result<(), HandlerError> {
         // Poll subscriptions and send the corresponding messages.
         {
             let mut inner = self.inner.borrow_mut();
@@ -178,15 +181,33 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
                     .start_send(RuntimeEvent::UserEvent(message))?;
             }
 
-            // Send the event to the instance.
-            inner.runtime_event_tx.start_send(RuntimeEvent::OnFrame)?;
+            if send_draw_event {
+                inner.runtime_event_tx.start_send(RuntimeEvent::Draw)?;
+            }
         }
 
-        self.poll_runtime();
+        {
+            let mut runtime = self.runtime_state.borrow_mut();
+
+            let RuntimeState {
+                instance,
+                runtime_context,
+            } = &mut *runtime;
+
+            // Flush all messages. This will block until the instance is finished.
+            let _ = instance.as_mut().poll(runtime_context);
+        }
 
         self.drain_window_commands();
 
         Ok(())
+    }
+}
+
+impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
+    fn poll(&self) {
+        self.poll_runtime().unwrap();
+        self.update_runtime(false).unwrap();
     }
 
     fn on_event(&self, event: baseview::Event) -> EventStatus {
@@ -233,17 +254,20 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
             };
         }
 
-        self.poll_runtime();
-
-        if !self.inner.borrow().processed_close_signal {
-            self.drain_window_commands();
-        }
+        self.update_runtime(false).unwrap();
 
         if ignore_event {
             EventStatus::Ignored
         } else {
             *self.event_status.borrow()
         }
+    }
+
+    fn draw(&self) -> Result<(), HandlerError> {
+        self.poll_runtime()?;
+        self.update_runtime(true)?;
+
+        Ok(())
     }
 
     fn resized(&self, new_size: baseview::WindowSize) -> Result<(), HandlerError> {
@@ -259,13 +283,16 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
                 .start_send(RuntimeEvent::Resized(new_size))?;
         }
 
-        self.poll_runtime();
-
-        if !self.inner.borrow().processed_close_signal {
-            self.drain_window_commands();
-        }
+        self.update_runtime(true)?;
 
         Ok(())
+    }
+
+    fn on_timer(&self, timer: &baseview::TimerHandle) {
+        if timer == self.poll_timer {
+            self.poll_runtime().unwrap();
+            self.update_runtime(true).unwrap();
+        }
     }
 }
 
@@ -328,9 +355,9 @@ impl<Message: 'static + Send> IcedMessageSender<Message> {
     ///
     /// Please note this channel is ***NOT*** realtime-safe and should never be
     /// used to send events from the audio thread. Use a realtime-safe ring
-    /// buffer instead (the [`PollSubNotifier`] can be used by the audio thread
-    /// to notify the GUI that it should poll messages from you realtime-safe
-    /// ring buffer.)
+    /// buffer instead (the [`PollSubNotifier`](crate::PollSubNotifier) can be
+    /// used by the audio thread to notify the GUI that it should poll messages
+    /// from you realtime-safe ring buffer.)
     pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
         self.tx
             .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))

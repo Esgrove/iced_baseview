@@ -15,6 +15,10 @@ pub enum Error {
     /// The application graphics context could not be created.
     #[error("the application graphics context could not be created")]
     GraphicsCreationFailed(graphics::Error),
+
+    /// The poll timer could not be created.
+    #[error("the application poll timer could not be created")]
+    TimerCreationFailed,
 }
 
 impl From<graphics::Error> for Error {

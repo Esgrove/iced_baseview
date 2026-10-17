@@ -1,6 +1,6 @@
 [package]
 name = "iced_baseview"
-version = "0.5.2"
+version = "0.6.0"
 authors = [
   "Billy Messenger <BillyDM@protonmail.com>",
   "Joakim Frostegård <joakim.frostegard@gmail.com>",
@@ -109,7 +109,7 @@ window_clipboard = { version = "0.5", default-features = false }
 sysinfo = { version = "0.39.6", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 keyboard-types = { version = "0.8.3", default-features = false }
-baseview = "0.3.4"
+baseview = "0.4.1"
 raw-window-handle = "0.6"
 crossbeam-utils = "0.8.22"
 thiserror = "2"
