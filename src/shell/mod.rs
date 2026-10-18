@@ -244,10 +244,6 @@ where
     let program_settings = program.settings();
     let mut graphics_settings: iced_widget::graphics::Settings = program_settings.clone().into();
 
-    let poll_timer = window
-        .create_timer(settings.poll_interval)
-        .map_err(|_| Error::TimerCreationFailed)?;
-
     // Important: plugins should never use vsync as it blocks the host's main thread.
     graphics_settings.vsync = false;
 
@@ -366,6 +362,12 @@ where
     });
 
     let runtime_context = task::Context::from_waker(task::noop_waker_ref());
+
+    // Note, for some reason wgpu doesn't work if this timer is created before the
+    // surface is created.
+    let poll_timer = window
+        .create_timer(settings.poll_interval)
+        .map_err(|_| Error::TimerCreationFailed)?;
 
     boot_span.finish();
 
