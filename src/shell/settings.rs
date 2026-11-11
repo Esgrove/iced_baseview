@@ -51,6 +51,14 @@ pub struct IcedWindowSettings {
     /// without using an asynchronous timer stream to send redraw messages to the application.
     pub always_redraw: bool,
 
+    /// Present only from baseview's native draw callback instead of the polling timer.
+    ///
+    /// Polling and asynchronous actions request a frame. Animations and timed widget redraws
+    /// use baseview's scheduler. This does not enable blocking GPU vsync or change the platform's
+    /// scheduling policy (in particular, baseview's Windows backend uses a fixed timer).
+    /// Defaults to `false` for compatibility with timer-driven applications.
+    pub native_frame_scheduling: bool,
+
     /// A fallback scale factor, if Baseview couldn't get one from the platform.
     ///
     /// If the platform does already provide an accurate scaling factor, this doesn't do anything.
@@ -183,6 +191,15 @@ impl IcedWindowSettings {
         self
     }
 
+    /// Enables presentation exclusively from baseview's native draw callback.
+    ///
+    /// See [`Self::native_frame_scheduling`] for platform behavior.
+    #[inline]
+    pub fn with_native_frame_scheduling(mut self, enabled: bool) -> Self {
+        self.native_frame_scheduling = enabled;
+        self
+    }
+
     /// The rate at which the [`poll_events`](crate::poll_events) subscription will trigger.
     ///
     /// Defaults to `1.0 / 64.0` seconds.
@@ -209,6 +226,7 @@ impl Default for IcedWindowSettings {
             wait_for_parent: false,
             ignore_non_modifier_keys: false,
             always_redraw: false,
+            native_frame_scheduling: false,
             fallback_scale_factor: None,
             poll_interval: Duration::from_secs_f64(1.0 / 64.0),
         }

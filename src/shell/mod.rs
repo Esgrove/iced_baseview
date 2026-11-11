@@ -25,6 +25,7 @@ use crate::Error;
 use crate::graphics::{Compositor, compositor};
 
 mod proxy;
+mod scheduling;
 
 #[cfg(feature = "sysinfo")]
 mod system;
@@ -188,7 +189,8 @@ where
 
     options.parent = settings.parent.take();
 
-    let message_sender = IcedMessageSender::new(sender);
+    let mut message_sender = IcedMessageSender::new(sender);
+    let native_frame_scheduling = settings.native_frame_scheduling;
 
     let window = baseview::Window::create_with_host(
         options,
@@ -222,6 +224,14 @@ where
         },
         host,
     )?;
+
+    if native_frame_scheduling {
+        let waker = window.waker();
+        message_sender.set_waker(waker.clone());
+        // The platform installs its display link after the handler builder returns.
+        // Arm the initial frame only once native window initialization has completed.
+        waker.request_redraw();
+    }
 
     Ok((window, message_sender))
 }
@@ -263,7 +273,8 @@ where
         )
     };
 
-    let proxy = Proxy::new(action_tx);
+    let proxy =
+        Proxy::new(action_tx).with_waker(settings.native_frame_scheduling.then(|| window.waker()));
 
     #[cfg(feature = "debug")]
     {
@@ -345,6 +356,7 @@ where
         ignore_non_modifier_keys: settings.ignore_non_modifier_keys,
         redraw_requested: true,
         redraw_at: None,
+        native_frames: settings.native_frame_scheduling.then(Default::default),
     };
 
     let instance = Box::pin({
@@ -381,6 +393,7 @@ where
         action_rx,
         window_size,
         poll_timer,
+        settings.native_frame_scheduling,
     ))
 }
 
@@ -447,6 +460,13 @@ async fn run_instance<P>(
                 }
             }
             RuntimeEvent::Draw => {
+                if let Some(scheduler) = &mut window.native_frames {
+                    scheduler.begin_draw(Instant::now());
+                    // Baseview may request a frame for exposure, visibility, resize, or a
+                    // delayed deadline without any Iced event. Native damage must repaint.
+                    window.redraw_requested = true;
+                }
+
                 #[cfg(feature = "unconditional-rendering")]
                 {
                     window.redraw_requested = true;
@@ -836,10 +856,12 @@ async fn run_instance<P>(
                     if do_send_status {
                         *event_status.borrow_mut() = EventStatus::Ignored;
                     }
-                    continue;
+                    if window.native_frames.is_none() {
+                        continue;
+                    }
+                } else {
+                    did_process_event = true;
                 }
-
-                did_process_event = true;
             }
             RuntimeEvent::Resized(new_size) => {
                 let zoom_factor = window_size.user_scale_factor();
@@ -890,6 +912,25 @@ async fn run_instance<P>(
                 );
 
                 break 'next_event;
+            }
+        }
+
+        if let Some(scheduler) = &mut window.native_frames {
+            let dirty = window.always_redraw
+                || cfg!(feature = "unconditional-rendering")
+                || window.redraw_requested
+                || did_process_event
+                || !events.is_empty()
+                || !messages.is_empty();
+            let now = Instant::now();
+            match scheduler.request(dirty, window.redraw_at, now) {
+                RedrawRequest::NextFrame => window.window.request_redraw(),
+                RedrawRequest::At(at) => {
+                    window
+                        .window
+                        .request_redraw_after(at.saturating_duration_since(now));
+                }
+                RedrawRequest::Wait => {}
             }
         }
     }

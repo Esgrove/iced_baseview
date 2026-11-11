@@ -45,6 +45,7 @@ where
     pub ignore_non_modifier_keys: bool,
     pub redraw_requested: bool,
     pub redraw_at: Option<Instant>,
+    pub native_frames: Option<super::scheduling::NativeFrameScheduler>,
     //ime_state: Option<(Rectangle, input_method::Purpose)>,
 }
 
@@ -56,6 +57,7 @@ pub(super) struct IcedWindowHandler<Message: 'static + Send> {
     event_status: Rc<RefCell<EventStatus>>,
     shared_window_size: SharedWindowSize,
     poll_timer: baseview::TimerHandle,
+    native_frame_scheduling: bool,
 }
 
 struct IcedWindowHandlerInner<Message: 'static + Send> {
@@ -80,6 +82,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
         action_rx: mpsc::UnboundedReceiver<iced_runtime::Action<Message>>,
         shared_window_size: SharedWindowSize,
         poll_timer: baseview::TimerHandle,
+        native_frame_scheduling: bool,
     ) -> Self {
         Self {
             inner: RefCell::new(IcedWindowHandlerInner {
@@ -96,6 +99,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             event_status,
             shared_window_size,
             poll_timer,
+            native_frame_scheduling,
         }
     }
 
@@ -266,6 +270,12 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
     fn draw(&self) -> Result<(), HandlerError> {
         self.poll_runtime()?;
         self.update_runtime(true)?;
+        if self.native_frame_scheduling {
+            // A compositor or synchronous subscription may enqueue actions during draw.
+            // Drain them before returning so a same-thread wake cannot be lost when
+            // baseview decides whether to pause its native frame source.
+            self.update_runtime(false)?;
+        }
 
         Ok(())
     }
@@ -283,7 +293,9 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
                 .start_send(RuntimeEvent::Resized(new_size))?;
         }
 
-        self.update_runtime(true)?;
+        self.update_runtime(super::scheduling::draw_on_timer(
+            self.native_frame_scheduling,
+        ))?;
 
         Ok(())
     }
@@ -291,7 +303,10 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
     fn on_timer(&self, timer: &baseview::TimerHandle) {
         if timer == self.poll_timer {
             self.poll_runtime().unwrap();
-            self.update_runtime(true).unwrap();
+            self.update_runtime(super::scheduling::draw_on_timer(
+                self.native_frame_scheduling,
+            ))
+            .unwrap();
         }
     }
 }
@@ -344,11 +359,16 @@ pub fn requests_exit(event: &baseview::Event) -> bool {
 #[allow(missing_debug_implementations)]
 pub struct IcedMessageSender<Message: 'static + Send> {
     tx: mpsc::UnboundedSender<RuntimeEvent<Message>>,
+    waker: Option<baseview::WindowWaker>,
 }
 
 impl<Message: 'static + Send> IcedMessageSender<Message> {
     pub(crate) fn new(tx: mpsc::UnboundedSender<RuntimeEvent<Message>>) -> Self {
-        Self { tx }
+        Self { tx, waker: None }
+    }
+
+    pub(crate) fn set_waker(&mut self, waker: baseview::WindowWaker) {
+        self.waker = Some(waker);
     }
 
     /// Send a custom message to the window.
@@ -360,7 +380,11 @@ impl<Message: 'static + Send> IcedMessageSender<Message> {
     /// from you realtime-safe ring buffer.)
     pub fn send_message(&mut self, msg: Message) -> Result<(), SendError> {
         self.tx
-            .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))
+            .start_send(RuntimeEvent::UserEvent(iced_runtime::Action::Output(msg)))?;
+        if let Some(waker) = &self.waker {
+            waker.request_redraw();
+        }
+        Ok(())
     }
 }
 
@@ -368,6 +392,7 @@ impl<Message: 'static + Send> Clone for IcedMessageSender<Message> {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
+            waker: self.waker.clone(),
         }
     }
 }
