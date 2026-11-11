@@ -34,11 +34,11 @@ impl NativeFrameScheduler {
             return RedrawRequest::NextFrame;
         }
 
-        if let Some(deadline) = deadline {
-            if self.deadline.is_none_or(|scheduled| deadline < scheduled) {
-                self.deadline = Some(deadline);
-                return RedrawRequest::At(deadline);
-            }
+        if let Some(deadline) = deadline
+            && self.deadline.is_none_or(|scheduled| deadline < scheduled)
+        {
+            self.deadline = Some(deadline);
+            return RedrawRequest::At(deadline);
         }
 
         RedrawRequest::Wait
