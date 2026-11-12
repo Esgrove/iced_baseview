@@ -71,6 +71,20 @@ struct RuntimeState {
     runtime_context: futures::task::Context<'static>,
 }
 
+impl RuntimeState {
+    fn poll(runtime: &RefCell<Self>) -> bool {
+        let Ok(mut runtime) = runtime.try_borrow_mut() else {
+            return false;
+        };
+        let Self {
+            instance,
+            runtime_context,
+        } = &mut *runtime;
+        let _ = instance.as_mut().poll(runtime_context);
+        true
+    }
+}
+
 impl<Message: 'static + Send> IcedWindowHandler<Message> {
     pub fn new(
         window: WindowContext,
@@ -159,17 +173,7 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             inner.runtime_event_tx.start_send(RuntimeEvent::Poll)?;
         }
 
-        {
-            let mut runtime = self.runtime_state.borrow_mut();
-
-            let RuntimeState {
-                instance,
-                runtime_context,
-            } = &mut *runtime;
-
-            // Flush all messages. This will block until the instance is finished.
-            let _ = instance.as_mut().poll(runtime_context);
-        }
+        RuntimeState::poll(&self.runtime_state);
 
         Ok(())
     }
@@ -190,16 +194,8 @@ impl<Message: 'static + Send> IcedWindowHandler<Message> {
             }
         }
 
-        {
-            let mut runtime = self.runtime_state.borrow_mut();
-
-            let RuntimeState {
-                instance,
-                runtime_context,
-            } = &mut *runtime;
-
-            // Flush all messages. This will block until the instance is finished.
-            let _ = instance.as_mut().poll(runtime_context);
+        if !RuntimeState::poll(&self.runtime_state) {
+            return Ok(());
         }
 
         self.drain_window_commands();
@@ -314,6 +310,33 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
 /// Closes the application window.
 pub fn close<T>() -> Task<T> {
     iced_runtime::window::close(Id::unique())
+}
+
+#[cfg(test)]
+mod reentry_tests {
+    use std::{cell::Cell, task::Poll};
+
+    use super::*;
+
+    #[test]
+    fn nested_poll_defers_without_losing_later_progress() {
+        let polls = Rc::new(Cell::new(0));
+        let runtime = Rc::new_cyclic(|weak: &std::rc::Weak<RefCell<RuntimeState>>| {
+            let weak = weak.clone();
+            let polls = Rc::clone(&polls);
+            RefCell::new(RuntimeState {
+                instance: Box::pin(futures::future::poll_fn(move |_| {
+                    polls.set(polls.get() + 1);
+                    assert!(!RuntimeState::poll(&weak.upgrade().unwrap()));
+                    Poll::Pending
+                })),
+                runtime_context: futures::task::Context::from_waker(futures::task::noop_waker_ref()),
+            })
+        });
+        assert!(RuntimeState::poll(&runtime));
+        assert!(RuntimeState::poll(&runtime));
+        assert_eq!(polls.get(), 2);
+    }
 }
 
 /// Resize the application window to the given logical dimensions.
