@@ -94,6 +94,5 @@ impl MyProgram {
             .align_x(Center)
             .spacing(20)
             .padding(20)
-            .into()
     }
 }

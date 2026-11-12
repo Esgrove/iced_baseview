@@ -173,8 +173,8 @@ where
 
     let size = match settings.size {
         baseview::dpi::Size::Logical(size) => baseview::dpi::Size::Logical(LogicalSize {
-            width: size.width as f64 * settings.scale_factor as f64,
-            height: size.height as f64 * settings.scale_factor as f64,
+            width: size.width * settings.scale_factor as f64,
+            height: size.height * settings.scale_factor as f64,
         }),
         baseview::dpi::Size::Physical(size) => baseview::dpi::Size::Physical(size),
     };

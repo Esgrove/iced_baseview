@@ -219,10 +219,9 @@ impl<Message: 'static + Send> WindowHandler for IcedWindowHandler<Message> {
             event,
             baseview::Event::Mouse(baseview::MouseEvent::ButtonPressed { .. })
         ) && !self.window.has_focus()
+            && let Err(e) = self.window.focus()
         {
-            if let Err(e) = self.window.focus() {
-                error!("Failed to focus window: {}", e);
-            }
+            error!("Failed to focus window: {}", e);
         }
 
         let ignore_event;

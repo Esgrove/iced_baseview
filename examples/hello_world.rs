@@ -60,6 +60,5 @@ impl MyProgram {
             .width(Length::Fill)
             .height(Length::Fill)
             .center(Length::Fill)
-            .into()
     }
 }
